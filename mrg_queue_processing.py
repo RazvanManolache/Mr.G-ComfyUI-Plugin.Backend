@@ -1,24 +1,28 @@
 import array
-from asyncio.windows_events import NULL
-from calendar import c
+import random
+import asyncio
 import datetime
 import base64
-from doctest import debug
-from fileinput import filename
-import pylab as pl
-from re import L
-from tokenize import String
 import server
 import execution
 import json
 import copy
 import math
+
+import pylab as pl
+
+from doctest import debug
+from fileinput import filename
+from re import L
+from tokenize import String
+from asyncio.windows_events import NULL
+from calendar import c
 from aiohttp import web
-from .database import *
-from .helpers import *
 from execution import *
-import random
-import asyncio
+
+from .mrg_database import *
+from .mrg_helpers import *
+
 
 from types import SimpleNamespace
 
@@ -215,7 +219,7 @@ def process_job_request(client_id, job_ob):
     
     response = {}
     response["success"] = "OK"
-    response["run_uuid"] = [str(x["queue"]["uuid"]) for x in api_ob["workflows"]]
+    response["run_uuid"] = [str(x["queue"]["uuid"]) for x in job_ob["workflows"]]
     
     return response
 

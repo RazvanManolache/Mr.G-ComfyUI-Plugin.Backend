@@ -1,22 +1,67 @@
-from tokenize import String
-from .queue_processing import *
 import server
-
 import json
+
+from tokenize import String
 from aiohttp import web
-from .database import *
-from .helpers import *
 
-from .bundle import *
+from .mrg_database import *
+from .mrg_helpers import *
+from .mrg_queue_processing import *
+from .mrg_bundle import *
+
+# package_repositories api - get, update, delete
+
+@server.PromptServer.instance.routes.get('/mrg/package_repositories')
+async def package_repositories_get(request):
+    data = get_package_repositories().dicts()
+    return json_response(list(data))
+
+@server.PromptServer.instance.routes.put('/mrg/package_repositories')
+@server.PromptServer.instance.routes.post('/mrg/package_repositories')
+async def package_repositories_update(request):
+    json_data = await request.json()    
+    upsert_package_repository(json_data)
+    return json_response({})
+
+@server.PromptServer.instance.routes.delete('/mrg/package_repositories')
+async def package_repositories_delete(request):
+    data = await request.json()
+    package = get_package_repository(data['uuid'])
+    if package is None:
+        return web.Response(status=404)
+    if package.system:
+        return web.Response(status=400, text="Cannot delete system package repository")
+    
+        
+
+    delete_package_repository(data['uuid'])
+    return web.Response(status=200)
+
+# packages - get, update, delete
+
+@server.PromptServer.instance.routes.get('/mrg/installed_packages')
+async def installed_packages(request):
+    data = get_packages().dicts()
+    return json_response(list(data))
+
+@server.PromptServer.instance.routes.put('/mrg/install_package')
+async def install_package(request):
+    json_data = await request.json()
+    package_uuid = json_data['uuid']
+    return json_response({})
+
+@server.PromptServer.instance.routes.put('/mrg/available_packages')
+async def available_packages(request):
+    json_data = await request.json()
+    upsert_available_packages(json_data)
+    return json_response({})
 
 
-
-
-
-@server.PromptServer.instance.routes.get('/mrg/bundle')
-async def picker_texts_update(request):
-    bundle_javascript_files("/ComfyUI/web/mrg/app/", "/bundle.js")
-    return web.HTTPTemporaryRedirect('app/bundle.js')
+@server.PromptServer.instance.routes.delete('/mrg/uninstall_package')
+async def uninstall_package(request):
+    data = await request.json()
+    delete_package(data['uuid'])
+    return web.Response(status=200)
 
 # api api - get, update
 
@@ -75,6 +120,25 @@ async def picker_texts_update(request):
     upsert_setting(json_data)
     return json_response({})
 
+# output_links api - get, update, delete
+
+@server.PromptServer.instance.routes.get('/mrg/output_links_by_output')
+async def output_links_by_output(request):
+    data = await request.json()
+    data = get_output_links_by_output(data['output_uuid']).dicts()
+    return json_response(list(data))
+
+@server.PromptServer.instance.routes.get('/mrg/output_links_by_selection_item')
+async def output_links_by_selection_item(request):
+    data = await request.json()
+    page = 1
+    pagesize = 25
+    if "page" in data:
+        page = data["page"]
+    if "pagesize" in data:
+        pagesize = data["pagesize"]
+    data = get_output_links_by_selection_item(data['selection_item_uuid'], page, pagesize).dicts()
+    return json_response(list(data))
 
 # workflows api - get, update, delete
 
@@ -104,36 +168,12 @@ async def workflows_delete(request):
     delete_workflow(data['uuid'])
     return web.Response(status=200)
 
-
-
 # workflow categories api - get, update, delete
 
 @server.PromptServer.instance.routes.get('/mrg/categories')
 async def categories_get(request):
     data = get_categories().dicts()
     return json_response(list(data))
-
-@server.PromptServer.instance.routes.get('/mrg/categories_tree')
-async def categories_get_tree(request):
-    data = list(get_categories().dicts())
-   
-    for node in data:
-        node["children"] = []
-    data.sort(key=lambda x: x["order"])
-    nodes = dict((e["uuid"], e) for e in data)
-    
-    for node in data:
-        if node["parent_uuid"]:
-            nodes[node["parent_uuid"]]["children"].append(nodes[node["uuid"]])
-    for node in nodes.values():
-        if len(node["children"])==0:
-            node["leaf"] = True
-    roots = [n for n in nodes.values() if not n["parent_uuid"]]
-   
-    root = Empty()
-    root["uuid"] = "root"
-    root["children"] = roots
-    return json_response(root)
 
 @server.PromptServer.instance.routes.put('/mrg/categories')
 @server.PromptServer.instance.routes.post('/mrg/categories')
@@ -149,51 +189,3 @@ async def categories_delete(request):
     data = await request.post()
     delete_category(data['uuid'])
     return web.Response(status=200)
-
-
-
-
-
-# selection_item api - get all, get specific, update, delete
-
-@server.PromptServer.instance.routes.get('/mrg/selection_items_types')
-async def selection_items_types(request):
-    for item in ComfyTypeMappings:
-        item.refresh_data()
-        item['db_data'] =  list(get_selection_items(item['field'], item['cls']).dicts())
-    return json_response(list(ComfyTypeMappings))
-
-@server.PromptServer.instance.routes.get('/mrg/selection_item')
-async def selection_item_get(request):
-    if "uuid" in request.rel_url.query:
-        uuid = request.rel_url.query["uuid"]
-    data = get_selection_item(uuid)
-    data = model_to_dict(data)
-    return json_response(data)
-
-@server.PromptServer.instance.routes.get('/mrg/selection_items')
-async def selection_items_get(request):
-    field = ""
-    node = ""
-    if "field" in request.rel_url.query:
-        field = request.rel_url.query["field"]
-    if "node" in request.rel_url.query:
-        node = request.rel_url.query["node"]
-    db_data = selection_item_get_internal(field, node)
-    return json_response(db_data)
-
-@server.PromptServer.instance.routes.put('/mrg/selection_items')
-@server.PromptServer.instance.routes.post('/mrg/selection_items')
-async def selection_items_update(request):  
-    json_data = await request.json()
-    db_data = upsert_selection_items(json_data)
-    return json_response(db_data)
-
-@server.PromptServer.instance.routes.delete('/mrg/selection_items')
-async def selection_items_delete(request):   
-    #TODO: also delete item
-    data = await request.post()
-    delete_selection_items(data['uuid'])
-    return web.Response(status=200)
-
-

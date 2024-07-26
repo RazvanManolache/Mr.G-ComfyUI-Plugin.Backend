@@ -5,7 +5,7 @@ from playhouse.shortcuts import model_to_dict
 
 
 
-dbName = "mrg.db"
+dbName = ".\db\mrg.db"
 
 database = SqliteDatabase(dbName, pragmas={
     'journal_mode': 'wal',
@@ -13,23 +13,140 @@ database = SqliteDatabase(dbName, pragmas={
     'foreign_keys': 1,  # Enforce foreign-key constraints
 })
 
-class BaseModel(Model):
+class BaseModel(Model): # js model
+    uuid = TextField(primary_key=True)
     class Meta:
         database = database
+        
+def get_queue_info():
+    count = queue_runs.select(fn.SUM(queue_runs.total - queue_runs.current)).where(queue_runs.status.not_in(("completed","cancelled"))).scalar()
+    return count
+
+def get_queue_running():
+    return queue_runs.select().where(queue_runs.status == "running").count()
 
 
-class BaseModelWithUUID(BaseModel):
-    uuid = TextField(primary_key=True)
+    
+    
 
-#selection_item - data for all combos
+def copy_values(src, dest):
+    is_src_dict = isinstance(src, dict)
+    is_dst_dict = isinstance(dest, dict)
+    
+    attrs = src
+    if not is_src_dict:
+        # make empty dict
+        attrs = {} 
+        a = dir(src)
+        for key in a:
+            if key[0] != "_":
+                attrs[key] = getattr(src,key)
 
-class selection_item(BaseModelWithUUID):
+    for key in attrs.keys():
+        # do not update uuid, create_date, update_date
+        if key == "uuid" or key == "create_date" or key == "update_date":
+            continue
+        if is_dst_dict:
+            dest[key] = attrs[key]
+        else:
+            setattr(dest, key,attrs[key])
+    
+    
+    
+class NamedObject(BaseModel): # js model
     name = TextField()
+    description = TextField(null=True)   
+    create_date = DateTimeField(null=False)
+    update_date = DateTimeField(null=False)
+    tags = TextField(null=True)
+
+class package_repositories(NamedObject): # js model
+    url = TextField()
+    system = BooleanField(default=False)
+
+def get_package_repository(uuid):
+    return package_repositories.get_by_id(uuid)
+
+def get_package_repositories():
+    return package_repositories.select()
+
+def upsert_package_repository(pkg_repo):
+    pkg_repo["update_date"] = datetime.datetime.now()
+    existing_row = None
+    try:
+        existing_row = package_repositories.get_by_id(pkg_repo["uuid"])
+    except:
+        pass
+    if existing_row == None:
+        pkg_repo["create_date"] = pkg_repo["update_date"]
+        
+        package_repositories.insert(pkg_repo).execute()
+        return get_package_repository(pkg_repo["uuid"])
+    else:
+        if existing_row.system == True:
+            return None
+        copy_values(pkg_repo, existing_row)
+        existing_row.save()
+        return model_to_dict(existing_row)
+
+def delete_package_repository(uuid):
+    if package_repositories.get_by_id(uuid).system == True:
+        return
+    package_repositories.delete_by_id(uuid)
+    
+
+#package - installed packages
+
+class packages(NamedObject): #js model
+    name = TextField()
+    description = TextField(null=True)
+    version = TextField(null=True)
+    repository = TextField(null=True)
+    branch = TextField(null=True)
+    commit = TextField(null=True)
+    parameters = TextField(null=True)
+    settings = TextField(null=True)
+    package_repository_uuid = ForeignKeyField(package_repositories, null=True,on_delete='SET NULL', backref='package_repository')
+    
+    
+def get_package(uuid):
+    return packages.get_by_id(uuid)
+
+def get_packages():
+    return packages.select()
+
+def upsert_package(pkg):
+    existing_row = None
+    pkg["update_date"] = datetime.datetime.now()
+    try:
+        existing_row = packages.get_by_id(pkg["uuid"])
+    except:
+        pass
+    if existing_row == None:
+        pkg["create_date"] = pkg["update_date"]
+        packages.insert(pkg).execute()
+        return get_package(pkg["uuid"])
+    else:
+        copy_values(pkg, existing_row)
+        existing_row.save()
+        return model_to_dict(existing_row)
+
+def delete_package(uuid, remove_associated = False):
+    #delete jobs, apis and workflows
+    if remove_associated:
+        jobs.delete().where(jobs.package_uuid == uuid).execute()
+        api.delete().where(api.package_uuid == uuid).execute()
+        workflows.delete().where(workflows.package_uuid == uuid).execute()    
+    packages.delete_by_id(uuid)
+    
+
+
+#selection_items - data for all combos
+
+class selection_items(NamedObject): #js model
     alias = TextField()
     comfy_name = TextField(null=True)
-    description = TextField(null=True)
     comments = TextField(null=True)
-    tags = TextField(null=True)
     times_used = IntegerField(default=0)
     rating = SmallIntegerField(default=0)
     text = TextField()
@@ -45,33 +162,34 @@ class selection_item(BaseModelWithUUID):
 
 
 def get_selection_item(uuid):
-    return selection_item.get_by_id(uuid)
+    return selection_items.get_by_id(uuid)
     
 def get_selection_items(field_type, node_type):
     if(node_type=='*'):
-        return selection_item.select().where(selection_item.field_type == field_type)
-    return selection_item.select().where(selection_item.field_type == field_type, selection_item.node_type == node_type)
+        return selection_items.select().where(selection_items.field_type == field_type)
+    return selection_items.select().where(selection_items.field_type == field_type, selection_items.node_type == node_type)
 
 
 def upsert_selection_items(sel_item):
     existing_row = None
+    sel_item["update_date"] = datetime.datetime.now()
     try:
-        existing_row = selection_item.get_by_id(sel_item["uuid"])
+        existing_row = selection_items.get_by_id(sel_item["uuid"])
     except: 
         pass
     if existing_row == None:
-        selection_item.insert(sel_item).execute()
+        sel_item["create_date"] = sel_item["update_date"]
+        selection_items.insert(sel_item).execute()
         return sel_item
     else:
-        for key in sel_item.keys():
-            setattr(existing_row,key,sel_item[key])
+        copy_values(sel_item, existing_row)
         existing_row.save()
         return model_to_dict(existing_row)
     
     #selection_item.insert(sel_item).on_conflict(conflict_target=(sel_item["uuid"],),update=sel_item).execute()
 
 def delete_selection_items(uuid):
-    selection_item.delete_by_id(uuid)
+    selection_items.delete_by_id(uuid)
     
 
 
@@ -79,16 +197,14 @@ def delete_selection_items(uuid):
 
 # categories - categories for workflows
 
-class categories(BaseModelWithUUID):
-    name = TextField()
+class categories(NamedObject): #js model
     icon = TextField()
-    description = TextField(null=True)
     system = BooleanField(default=False)
     order = IntegerField(default=1)
     parent_uuid = ForeignKeyField('self',null=True,on_delete='CASCADE', backref='categories')
 
 def get_categories():
-    return categories.select()
+    return categories.select().order_by(categories.order).dicts().execute()
 
 def get_category(uuid):
     try:
@@ -98,12 +214,22 @@ def get_category(uuid):
     return None
 
 def upsert_category(category):
-    cat = get_category(category["uuid"])
-    if cat is not None:    
-        if(cat.system == True):
-            return
-    categories.insert(category).on_conflict(conflict_target=(categories.uuid,),update=category).execute()
-    return get_category(category["uuid"])
+    existing_row = None
+    category["update_date"] = datetime.datetime.now()
+    try:
+        existing_row = categories.get_by_id(category["uuid"])
+    except:
+        pass
+    if existing_row == None:
+        category["create_date"] = category["update_date"]
+        categories.insert(category).execute()
+        return category
+    else:
+        copy_values(category, existing_row)
+        existing_row.save()
+        return model_to_dict(existing_row)
+    #categories.insert(category).on_conflict(conflict_target=(categories.uuid,),update=category).execute()
+    #return get_category(category["uuid"])
 
 def delete_category(uuid):
     cat =  categories.get_by_id(uuid)
@@ -117,16 +243,17 @@ def delete_category(uuid):
 
 # workflows - all saved workflows
 
-class workflows(BaseModelWithUUID):
-    name = TextField()
-    description = TextField(null=True)
+class NamedPackageObject(NamedObject): #js model
+    package_uuid = ForeignKeyField(packages, null=True,on_delete='SET NULL', backref='package')
+    category_uuid = ForeignKeyField(categories, null=True,on_delete='SET NULL', backref='category')    
 
-    tags = TextField(null=True)    
+    
+class workflows(NamedPackageObject): #js model
+    
     rating = SmallIntegerField(default=0)
     order = IntegerField(default=1)
-    favourite = BooleanField(default=False)
+    favourite = BooleanField(default=False)  
     
-    category_uuid = ForeignKeyField(categories, null=True,on_delete='SET NULL', backref='category')
 
     hidden = BooleanField(default=False)
     system = BooleanField(default=False)
@@ -137,8 +264,6 @@ class workflows(BaseModelWithUUID):
     settings = TextField(null=True)
     run_values =  TextField(null=True)
 
-    create_date = DateTimeField(null=False)
-    update_date = DateTimeField(null=False)
     
 
 def get_workflows_short():
@@ -154,37 +279,29 @@ def delete_workflow(uuid):
     workflows.delete_by_id(uuid)
 
 def upsert_workflow(workflow):
-    #try to insert, if it fails, update
-    
     existing_row = None
+    workflow["update_date"] = datetime.datetime.now()
     try:
         existing_row = workflows.get_by_id(workflow["uuid"])
     except:
         pass
     if existing_row == None:
+        workflow["create_date"] = workflow["update_date"]
         workflows.insert(workflow).execute()
-        return get_workflow(workflow["uuid"])
+        return workflow
     else:
-        for key in workflow.keys():
-            setattr(existing_row,key,workflow[key])
+        copy_values(workflow, existing_row)
         existing_row.save()
         return model_to_dict(existing_row)
-
-    # workflows.insert(workflow).on_conflict(conflict_target=(workflows.uuid,),update=workflow).execute()
-    # return get_workflow(workflow["uuid"])
+    
 
 
-class workflow_extenders(BaseModelWithUUID):
-    name = TextField()
-    description = TextField(null=True)
+class workflow_extenders(NamedPackageObject): #js model
     workflows = TextField(null=True)    
-    create_date = DateTimeField(null=False)
-    update_date = DateTimeField(null=False)
     enabled = BooleanField(default=True)
-    tags = TextField(null=True)
     runs = IntegerField(default=0)
     
-class api(workflow_extenders):
+class api(workflow_extenders): #js model
     endpoint = TextField(null=False)
     parameters = TextField(null=True)
 
@@ -206,41 +323,29 @@ def get_apis_by_preset(preset_uuid):
 
 def delete_api(uuid):
     api.delete_by_id(uuid)
-    
-def insert_api(api):
-    now = datetime.datetime.now()
-    api["create_date"] = now
-    api["update_date"] = now
-    api.insert(api).execute()
-    return get_api(api["uuid"])
 
     
-def update_api(api_ob):
-    api_ob.update_date = datetime.datetime.now()
-
-    api_ob.save()
-    return get_api(api.uuid)
 
 def upsert_api(api_ob):
     existing_row = None
+    api_ob["update_date"] = datetime.datetime.now()
     try:
         existing_row = api.get_by_id(api_ob["uuid"])
     except:
         pass
     if existing_row == None:
-        api_ob["create_date"] = datetime.datetime.now()
-        api_ob["update_date"] = datetime.datetime.now()        
+        api_ob["create_date"] = api_ob["update_date"]
+                
         api.insert(api_ob).execute()
         return api
     else:
         for key in api_ob.keys():
             setattr(existing_row,key,api_ob[key])
-        api_ob["update_date"] = datetime.datetime.now()
         existing_row.save()
         return model_to_dict(existing_row)
 
-class jobs (workflow_extenders):
-    cron = TextField(null=False)
+class jobs(workflow_extenders): #js model
+    cron = TextField(null=False) #cron string
 
 def update_job_runs(uuid, runs):
     jobs.update(runs=runs).where(jobs.uuid == uuid).execute()
@@ -254,21 +359,15 @@ def get_jobs():
 def delete_job(uuid):
     jobs.delete_by_id(uuid)
     
-def insert_job(job):
-    jobs.insert(job).execute()
-    return get_job(job["uuid"])
-
-def update_job(job):    
-    job.save()
-    return get_job(job.uuid)
-
 def upsert_job(job):
+    job["update_date"] = datetime.datetime.now()
     existing_row = None
     try:
         existing_row = jobs.get_by_id(job["uuid"])
     except:
         pass
     if existing_row == None:
+        job["create_date"] = job["update_date"]
         jobs.insert(job).execute()
         return job
     else:
@@ -279,29 +378,37 @@ def upsert_job(job):
     
 
 # queue_runs - queue
-
-class queue_runs(BaseModelWithUUID):
+ 
+class queue_runs(NamedObject): 
     workflow_uuid = ForeignKeyField(workflows, null=True,on_delete='SET NULL', backref='workflow') #saved
     api_uuid = ForeignKeyField(api, null=True,on_delete='SET NULL', backref='api') #saved
     job_uuid = ForeignKeyField(jobs, null=True,on_delete='SET NULL', backref='job') #saved
     secondary_uuid = TextField(null=True) #saved
     client_id = TextField(null=True) #saved
-    name = TextField(null=True) #saved
-    tags = TextField(null=True) #saved
     run_settings = TextField(null=False) #saved
     total = IntegerField(null=False) #saved
     contents = TextField(null=True) #saved
-    create_date = DateTimeField(null=False) #saved
     run_type = TextField(null = False) #saved
     current = IntegerField(null=False) #saved on creation
     order = BigIntegerField(null=False) #saved on creation
     status = TextField(null=True) #saved on creation      
     start_date = DateTimeField(null=True) #saved on creation 
-    update_date = DateTimeField(null=False) #saved on creation 
     end_date = DateTimeField(null=True) #saved on creation 
     nodes_values = TextField(null=True) #wip
     run_values =  TextField(null=True) #saved
     current_values = TextField(null=True) #need to update
+
+def get_queue_runs_paged(page, per_page, order_column, order_dir, filt):
+    #include outputs, workflow name, api name and job name
+    page_results = queue_runs.select().join(queue_steps).join(outputs).join(workflows).join(api).join(jobs).order_by(order_column).paginate(page, per_page)
+    if filt is not None:
+        page_results = page_results.where(filt)
+    page_results = page_results.dicts().execute()
+    total = queue_runs.select().count()
+    pages = total // per_page
+    return {"items":page_results, "total":total, "pages":pages}
+    
+    
 
 def get_queue_run_status_for_uuid_list(uuids):
     return queue_runs.select(queue_runs.uuid, queue_runs.status).where(queue_runs.uuid.in_(uuids)).dicts().execute()
@@ -358,9 +465,12 @@ def update_queue_run(queued_run):
     queued_run.save()
     return get_queue_run(queued_run.uuid)[0]
 
+def get_queue_run_by_step_id(uuid):
+    return queue_runs.select().where(queue_runs.uuid == uuid).execute()[0]
+
 # queue_steps - queue results
 
-class queue_steps(BaseModelWithUUID):
+class queue_steps(BaseModel):
     queued_run_uuid = ForeignKeyField(queue_runs, null=True,on_delete='SET NULL', backref='queued_run')
     run_value = TextField()
     status = TextField(null=False) # queued, running, paused, cancelled, completed
@@ -438,13 +548,14 @@ def update_queue_step(queue_step):
 
 # output - output from the run
 
-class outputs(BaseModelWithUUID):
+class outputs(BaseModel):
     queue_step_uuid = ForeignKeyField(queue_steps, null=True,on_delete='SET NULL', backref='queue_step')
     value = TextField(null=False)
     order = IntegerField(null=False)
     node_id = IntegerField(null=False)
     output_type = TextField(null=False)
     create_date = DateTimeField(null=False)
+    update_date = DateTimeField(null=False)
     rating = SmallIntegerField(default=0)
 
 def get_all_outputs_for_run(queued_run_uuid):
@@ -455,6 +566,28 @@ def get_output(uuid):
 
 def get_outputs():
     return outputs.select()
+
+
+def get_outputs_paginated(page, per_page, orderby, order_name, order_dir):
+    page_results = outputs.select().paginate(page, per_page)
+    #include step info
+    page_results = page_results.join(queue_steps).join(queue_runs).join(workflows).join(api).join(jobs)
+    
+    # select only the fields we need, everything from outputs and only the name from the other tables
+
+    page_results = page_results.select(outputs, queue_runs.uuid.alias("queue_run_uuid"), 
+                                       workflows.uuid.alias("workflow_uuid"), workflows.name.alias("workflow_name"), 
+                                       api.uuid.alias("api_uuid"), api.name.alias("api_name"),
+                                       jobs.uuid.alias("job_uuid"), jobs.name.alias("job_name")
+                                  )
+    
+    if orderby is not None:
+        page_results = page_results.order_by(orderby)
+    
+    page_results = page_results.dicts().execute()
+    total = outputs.select().count()
+    pages = total // per_page
+    return {"items":page_results, "total":total, "pages":pages}
 
 def get_outputs_by_queue_step(queue_step_uuid):
     return outputs.select().where(outputs.queue_step_uuid == queue_step_uuid).order_by(outputs.order)
@@ -471,6 +604,11 @@ def get_outputs_by_queue_step_and_output_type(queue_step_uuid, output_type):
 def get_outputs_by_node_run_uuid(node_run_uuid):
     return outputs.select().join(queue_steps).where(queue_steps.queued_run_uuid == node_run_uuid).order_by(outputs.order)
 
+def update_output_rating(uuid, rating):
+    outputs.update(rating=rating).where(outputs.uuid == uuid).execute()
+    
+def delete_output(uuid):
+    outputs.delete_by_id(uuid)
 
 def insert_output(output):
     now = datetime.datetime.now()
@@ -478,12 +616,39 @@ def insert_output(output):
     outputs.insert(output).execute()
     return get_output(output["uuid"])
 
+# output_link - output links to selection items
+class output_links(BaseModel):
+    output_uuid = ForeignKeyField(outputs, null=True,on_delete='CASCADE', backref='output')
+    selection_item_uuid = ForeignKeyField(selection_items, null=True,on_delete='CASCADE', backref='selection_item')
+    
+def get_output_link(uuid):
+    return output_links.get_by_id(uuid)
+
+def get_output_links_by_output(output_uuid):
+    return output_links.select().where(output_links.output_uuid == output_uuid)
+
+def get_selection_item_by_output(output_uuid):
+    return output_links.select().join(selection_items).where(output_links.output_uuid == output_uuid).dicts().execute()
+
+def get_outputs_by_selection_item(selection_item_uuid, page, pagesize):
+    return outputs.select().join(output_links).where(output_links.selection_item_uuid == selection_item_uuid).paginate(page, pagesize)
+    
+
+def get_output_links_by_selection_item(selection_item_uuid):
+    return output_links.select().where(output_links.selection_item_uuid == selection_item_uuid)
+
+def insert_output_link(output_link):
+    output_links.insert(output_link).execute()
+    return get_output_link(output_link["uuid"])
+
+def delete_output_link(uuid):
+    output_links.delete_by_id(uuid)
+    
+
 # settings - settings for UI and backend
 
-class settings(BaseModelWithUUID):
-    name = TextField()
+class settings(NamedObject):
     setting_type = TextField()
-    description = TextField(null=True)
     value = TextField(null=True)
     value_type = TextField(null=True)
     value_type_options = TextField(null=True)
@@ -492,14 +657,37 @@ def get_settings():
     return settings.select()
 
 def upsert_setting(setting):
-    settings.insert(setting).on_conflict(conflict_target=(settings.uuid,),update=setting).execute()
+    existing_row = None
+    setting["update_date"] = datetime.datetime.now()
+    try:
+        existing_row = settings.get_by_id(setting["uuid"])
+    except:
+        pass
+    if existing_row == None:
+        setting["create_date"] = setting["update_date"]
+        settings.insert(setting).execute()
+        return setting
+    else:
+        for key in setting.keys():
+            setattr(existing_row,key,setting[key])
+        existing_row.save()
+        return model_to_dict(existing_row)
 
 
 # create tables
 
 def create_tables():
     with database:
-        database.create_tables([selection_item, settings, categories,workflows, queue_runs, queue_steps, outputs, api, jobs ])
+        database.create_tables([selection_items, settings, categories,workflows, queue_runs, queue_steps, outputs, api, jobs, package_repositories, packages ])
+        
+create_tables()
+
+def create_default_data():
+    upsert_package_repository({"uuid":"f42cd12c-4c7a-451b-a1f4-ad2d2a6fe28f","name":"Mr.G official packages","url":"https://github.com/RazvanManolache/Mr.G-AI-Packages-List","system":True})
+
+    upsert_category({"uuid":"00000000-0001-0000-0000-000000000000","name":"Favourites","icon":"x-fa fa-star","system":True,"order":-9999})
+    upsert_category({"uuid":"00000000-0003-0000-0000-000000000000","name":"No category","icon":"x-fa fa-question","system":True,"order":-9997})
+    upsert_category({"uuid":"00000000-0002-0000-0000-000000000000","name":"All","icon":"x-fa fa-globe","system":True,"order":-9998})
 
         
 

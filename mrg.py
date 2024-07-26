@@ -11,10 +11,13 @@ from server import PromptServer
 from aiohttp import web
 import websocket
 
-from .mrgserver import *
-from .database import *
-from .api import *
-from .prompt_api import *
+from .mrg_server import *
+from .mrg_api import *
+from .mrg_api_crud import *
+from .mrg_prompt_api import *
+
+
+#from .mrg_odata import *
 
 
 
@@ -27,7 +30,7 @@ NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 WEB_DIRECTORY = 'web'
 
-create_tables()
+
 
 def stalk_comfy(ws):
     try:

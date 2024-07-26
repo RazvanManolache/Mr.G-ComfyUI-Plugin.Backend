@@ -1,16 +1,19 @@
 import folder_paths
 import comfy
 import os
-from comfy_extras import nodes_mask,nodes_post_processing,nodes_custom_sampler,nodes_model_downscale,nodes_images,nodes_model_advanced,nodes_compositing
 import uuid
 import nodes
-from pathlib import PurePath, Path
-import json
-import copy
-from aiohttp import web
 import server
 import asyncio
-from .database import *
+import json
+import copy
+
+from pathlib import PurePath, Path
+from aiohttp import web
+from comfy_extras import nodes_mask,nodes_post_processing,nodes_custom_sampler,nodes_model_downscale,nodes_images,nodes_model_advanced,nodes_compositing
+
+from .mrg_database import *
+
 class Empty(dict):
     pass   
 
@@ -60,7 +63,7 @@ def selection_item_get_internal(field_type, node_type):
                     if mapping["type"] == 0 :
                         path = PurePath(entry)
                         #TODO: try to also get images from these subfolders
-                        selection_item.insert(uuid=uuid.uuid4(), 
+                        selection_items.insert(uuid=uuid.uuid4(), 
                                               name=path.name,
                                               path= path.parents[0],
                                               alias=path.name,
@@ -69,7 +72,7 @@ def selection_item_get_internal(field_type, node_type):
                                               field_type = field_type,
                                               node_type = mapping["cls"] ).execute()                    
                     else:
-                        selection_item.insert(uuid=uuid.uuid4(), 
+                        selection_items.insert(uuid=uuid.uuid4(), 
                                               name=entry, 
                                               alias=entry,
                                               comfy_name=entry, 
