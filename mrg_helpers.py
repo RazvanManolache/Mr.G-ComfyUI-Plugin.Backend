@@ -1,5 +1,5 @@
 import folder_paths
-import comfy
+
 import os
 import uuid
 import nodes
@@ -8,9 +8,12 @@ import asyncio
 import json
 import copy
 
+import comfy
+from comfy_extras import nodes_latent,  nodes_compositing, nodes_mask, nodes_model_downscale, nodes_images, nodes_post_processing, nodes_custom_sampler, nodes_advanced_samplers, nodes_model_advanced, nodes_latent, nodes_mask, nodes_photomaker, nodes_morphology, nodes_align_your_steps, nodes_controlnet, nodes_sd3, nodes_audio
+
 from pathlib import PurePath, Path
 from aiohttp import web
-from comfy_extras import nodes_mask,nodes_post_processing,nodes_custom_sampler,nodes_model_downscale,nodes_images,nodes_model_advanced,nodes_compositing
+
 
 from .mrg_database import *
 
@@ -93,7 +96,11 @@ class ComfyTypeMapping(dict):
         if self["type"]==0:
             self["data"] = folder_paths.get_filename_list(self["alias"])
         if self["type"]==1:
-            self["data"] = eval(self["alias"])
+            try:
+                self["data"] = eval(self["alias"])
+            except Exception as e:
+                print(f"An error occurred: {str(e)} - {self['alias']}")
+                self["data"] = []
         
 
 
@@ -104,12 +111,13 @@ ComfyTypeMappings = [
     ComfyTypeMapping("MRG_FLOAT","", 2, "FLOAT"),
     ComfyTypeMapping("MRG_PRESET","", 2, "PRESET"),
 
-
+    #nodes
     ComfyTypeMapping("upscale_method","LatentUpscaleBy", 1, "nodes.LatentUpscaleBy.upscale_methods"),
     ComfyTypeMapping("image","", 1, "nodes.LoadImage.INPUT_TYPES()['required']['image'][0]"),
     ComfyTypeMapping("image","LoadImageMask", 1, "nodes.LoadImageMask.INPUT_TYPES()['required']['image'][0]"),
     ComfyTypeMapping("channel","LoadImageMask", 1, "nodes.LoadImageMask._color_channels"),
-    ComfyTypeMapping("type","ClipLoader", 1, "nodes.ClipLoader.INPUT_TYPES()['required']['type'][0]"),
+    ComfyTypeMapping("type","CLIPLoader", 1, "nodes.CLIPLoader.INPUT_TYPES()['required']['type'][0]"),
+    ComfyTypeMapping("type","DualCLIPLoader", 1, "nodes.DualCLIPLoader.INPUT_TYPES()['required']['type'][0]"),    
     ComfyTypeMapping("upscale_method","ImageScale", 1, "nodes.ImageScale.upscale_methods"),
     ComfyTypeMapping("upscale_method","ImageScaleBy", 1, "nodes.ImageScaleBy.upscale_methods"),
     ComfyTypeMapping("set_cond_area","ConditioningSetMask", 1, "nodes.ConditioningSetMask.INPUT_TYPES()['required']['set_cond_area'][0]"),
@@ -119,33 +127,64 @@ ComfyTypeMappings = [
     ComfyTypeMapping("flip_method","LatentFlip", 1, "nodes.LatentFlip.INPUT_TYPES()['required']['flip_method'][0]"),
     ComfyTypeMapping("model_path","DiffusersLoader", 1, "nodes.DiffusersLoader.INPUT_TYPES()['required']['model_path'][0]"),
     ComfyTypeMapping("latent","LoadLatent", 1, "nodes.LoadLatent.INPUT_TYPES()['required']['latent'][0]"),
+    ComfyTypeMapping("upscale_method","LatentUpscale", 1, "nodes.LatentUpscale.upscale_methods"),
+    ComfyTypeMapping("crop","LatentUpscale", 1, "nodes.LatentUpscale.crop_methods"),
+    ComfyTypeMapping("crop","ImageScale", 1, "nodes.ImageScale.upscale_methods"),
+    ComfyTypeMapping("crop","ImageScale", 1, "nodes.ImageScale.crop_methods"),
+    #nodes_latent
+    ComfyTypeMapping("seed_behavior","LatentBatchSeedBehavior", 1, "nodes_latent.LatentBatchSeedBehavior.INPUT_TYPES()['required']['seed_behavior'][0]"),
+    #nodes_compositing
     ComfyTypeMapping("mode","PorterDuffImageComposite", 1, "nodes_compositing.PorterDuffImageComposite.INPUT_TYPES()['required']['mode'][0]"),
-   
-    
+    #nodes_mask    
     ComfyTypeMapping("channel","ImageToMask", 1, "nodes_mask.ImageToMask.INPUT_TYPES()['required']['channel'][0]"),
+    #nodes_model_downscale
     ComfyTypeMapping("upscale_method","PatchModelAddDownscale", 1, "nodes_model_downscale.PatchModelAddDownscale.upscale_methods"),
+    #nodes_images
     ComfyTypeMapping("method","SaveAnimatedWEBP", 1, "nodes_images.SaveAnimatedWEBP.methods"),
+    #nodes_post_processing
     ComfyTypeMapping("upscale_method","ImageScaleToTotalPixels", 1, "nodes_post_processing.ImageScaleToTotalPixels.upscale_methods"),
     ComfyTypeMapping("blend_mode","ImageBlend", 1, "nodes_post_processing.Blend.INPUT_TYPES()['required']['blend_mode'][0]"),
     ComfyTypeMapping("dither","ImageQuantize", 1, "nodes_post_processing.Quantize.INPUT_TYPES()['required']['dither'][0]"),
+    #nodes_custom_sampler
     ComfyTypeMapping("solver_type","SamplerDPMPP_2M_SDE", 1, "nodes_custom_sampler.SamplerDPMPP_2M_SDE.INPUT_TYPES()['required']['solver_type'][0]"),
     ComfyTypeMapping("noise_device","SamplerDPMPP_2M_SDE", 1, "nodes_custom_sampler.SamplerDPMPP_2M_SDE.INPUT_TYPES()['required']['noise_device'][0]"),
     ComfyTypeMapping("noise_device","SamplerDPMPP_SDE", 1, "nodes_custom_sampler.SamplerDPMPP_SDE.INPUT_TYPES()['required']['noise_device'][0]"),
-    
+    ComfyTypeMapping("noise_device","SamplerDPMPP_3M_SDE", 1, "nodes_custom_sampler.SamplerDPMPP_3M_SDE.INPUT_TYPES()['required']['noise_device'][0]"),
+    #nodes_advanced_samplers
+    ComfyTypeMapping("upscale_methods","SamplerLCMUpscale", 1, "nodes_advanced_samplers.SamplerLCMUpscale.upscale_methods"),
+    ComfyTypeMapping("version","SamplerEulerCFGpp", 1, "nodes_advanced_samplers.SamplerEulerCFGpp.INPUT_TYPES()['required']['version'][0]"),
+    #nodes_model_advanced
     ComfyTypeMapping("sampling","ModelSamplingContinuousEDM", 1, "nodes_model_advanced.ModelSamplingContinuousEDM.INPUT_TYPES()['required']['sampling'][0]"),
     ComfyTypeMapping("downscale_method","PatchModelAddDownscale", 1, "nodes_model_downscale.PatchModelAddDownscale.INPUT_TYPES()['required']['downscale_method'][0]"),
-    ComfyTypeMapping("operation","MaskComposite", 1, "nodes_mask.MaskComposite.INPUT_TYPES()['required']['operation'][0]"),
-
-
     ComfyTypeMapping("sampling","ModelSamplingDiscrete", 1, "nodes_model_advanced.ModelSamplingDiscrete.INPUT_TYPES()['required']['sampling'][0]"),
+    ComfyTypeMapping("sampling","ModelSamplingContinuousV", 1, "nodes_model_advanced.ModelSamplingContinuousV.INPUT_TYPES()['required']['sampling'][0]"),
+    #nodes_mask
+    ComfyTypeMapping("operation","MaskComposite", 1, "nodes_mask.MaskComposite.INPUT_TYPES()['required']['operation'][0]"),
+    #nodes_photomaker
+    ComfyTypeMapping("photomaker_model_name","PhotoMakerLoader", 1, "nodes_photomaker.PhotoMakerLoader.INPUT_TYPES()['required']['photomaker_model_name'][0]"),
+    #nodes_morphology
+    ComfyTypeMapping("operation","Morphology", 1, "nodes_morphology.Morphology.INPUT_TYPES()['required']['operation'][0]"),
+    #nodes_align_your_steps
+    ComfyTypeMapping("model_type","AlignYourStepsScheduler", 1, "nodes_align_your_steps.AlignYourStepsScheduler.INPUT_TYPES()['required']['model_type'][0]"),
+    #nodes_controlnet
+    ComfyTypeMapping("type","SetUnionControlNetType", 1, "nodes_controlnet.SetUnionControlNetType.INPUT_TYPES()['required']['type'][0]"),
+    #nodes_sd3
+    ComfyTypeMapping("empty_padding","CLIPTextEncodeSD3", 1, "nodes_sd3.CLIPTextEncodeSD3.INPUT_TYPES()['required']['empty_padding'][0]"),
+    ComfyTypeMapping("clip_name1","TripleCLIPLoader", 1, "nodes_sd3.TripleCLIPLoader.INPUT_TYPES()['required']['clip_name1'][0]"),
+    ComfyTypeMapping("clip_name2","TripleCLIPLoader", 1, "nodes_sd3.TripleCLIPLoader.INPUT_TYPES()['required']['clip_name2'][0]"),
+    ComfyTypeMapping("clip_name3","TripleCLIPLoader", 1, "nodes_sd3.TripleCLIPLoader.INPUT_TYPES()['required']['clip_name3'][0]"),
+    #nodes_audio
+    ComfyTypeMapping("audio","LoadAudio", 1, "nodes_audio.LoadAudio.INPUT_TYPES()['required']['audio'][0]"),
+    
 
-   
+    #samplers
+    ComfyTypeMapping("sampler_name","KSampler", 1, "comfy.samplers.KSampler.SAMPLERS"),
+    ComfyTypeMapping("sampler_name","KSamplerAdvanced", 1, "comfy.samplers.KSampler.SAMPLERS"),
+    ComfyTypeMapping("sampler_name","", 1, "comfy.samplers.SAMPLER_NAMES"),
+    ComfyTypeMapping("scheduler","KSampler", 1, "comfy.samplers.KSampler.SCHEDULERS"),
+    ComfyTypeMapping("scheduler","KSamplerAdvanced", 1, "comfy.samplers.KSampler.SCHEDULERS"),
+    ComfyTypeMapping("scheduler","", 1, "comfy.samplers.KSampler.SCHEDULERS"),
 
-    ComfyTypeMapping("upscale_method","LatentUpscale", 1, "nodes.LatentUpscale.upscale_methods"),
-    ComfyTypeMapping("crop","LatentUpscale", 1, "nodes.LatentUpscale.crop_methods"),
-
-    ComfyTypeMapping("crop","ImageScale", 1, "nodes.ImageScale.upscale_methods"),
-    ComfyTypeMapping("crop","ImageScale", 1, "nodes.ImageScale.crop_methods"),
     
     
 
@@ -167,12 +206,7 @@ ComfyTypeMappings = [
     ComfyTypeMapping("embeddings","", 0, "embeddings"),
     ComfyTypeMapping("previewer","", 0, "vae_approx"),
 
-    ComfyTypeMapping("sampler_name","KSampler", 1, "comfy.samplers.KSampler.SAMPLERS"),
-    ComfyTypeMapping("sampler_name","KSamplerAdvanced", 1, "comfy.samplers.KSampler.SAMPLERS"),
-    ComfyTypeMapping("sampler_name","", 1, "comfy.samplers.SAMPLER_NAMES"),
-    ComfyTypeMapping("scheduler","KSampler", 1, "comfy.samplers.KSampler.SCHEDULERS"),
-    ComfyTypeMapping("scheduler","KSamplerAdvanced", 1, "comfy.samplers.KSampler.SCHEDULERS"),
-    ComfyTypeMapping("scheduler","", 1, "comfy.samplers.KSampler.SCHEDULERS"),
+
 ]        
 
 
