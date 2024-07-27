@@ -36,11 +36,11 @@ def make_json(obj):
     return json.dumps(obj, default=get_obj_dict,separators=(',', ':'))
 
 def queded_run_result_finished(uuid):
-    result = get_queue_step_by_id(uuid)
+    result = get_batch_step_by_id(uuid)
     result.status = "finished"
     result.end_time = datetime.datetime.now();    
-    update_queue_step(result)
-    check_queued_runs_finished_uuid(result["queued_run_uuid"])
+    update_batch_step(result)
+    check_batch_requests_finished_uuid(result["batch_request_uuid"])
     
 def check_comfy_queue():
     #somehow check that comfy is still doing stuff and if so, return
@@ -77,7 +77,7 @@ def process_socket_api_request(sid, data):
             ob = { "query": [], "result":[]} 
             if "uuids" in data and type(data["uuids"]) is list:
                 ob["query"] = data["uuids"]
-                ob["result"] = list(get_queue_run_status_for_uuid_list(data["uuids"]))
+                ob["result"] = list(get_batch_request_status_for_uuid_list(data["uuids"]))
             return {"type": "requestStatuses", "result": ob}
         elif data["type"] == "getResult":
             outputs = get_all_outputs_for_run(data["uuid"]);
@@ -212,9 +212,9 @@ def process_job_request(client_id, job_ob):
     if len(errors)>0:
         return {"error": errors}
     for workflow in job_ob["workflows"]:
-        workflow["run"] = insert_queue_run(workflow["queue"])
+        workflow["run"] = insert_batch_request(workflow["queue"])
     update_job_runs(job_ob["uuid"], int(job_ob["runs"]+1))
-    check_queue_runs()
+    check_batch_requests()
     
     response = {}
     response["success"] = "OK"
@@ -291,9 +291,9 @@ def process_api_request(client_id, api_ob, params):
     if len(errors)>0:
         return {"error": errors}
     for workflow in api_ob["workflows"]:
-        workflow["run"] = insert_queue_run(workflow["queue"])
+        workflow["run"] = insert_batch_request(workflow["queue"])
     update_api_runs(api_ob["uuid"], int(api_ob["runs"]+1))
-    check_queue_runs()
+    check_batch_requests()
     
     response = {}
     response["success"] = "OK"
@@ -373,13 +373,13 @@ def ws_queue_updated(server, message):
     # print(message) 
     if isinstance(message, str):
         message = json.loads(message)
-    queued_steps = get_all_queue_steps_by_statuses_other_than(["finished", "failed", "invalid"])
+    batch_steps = get_all_batch_steps_by_statuses_other_than(["finished", "failed", "invalid"])
     history = get_prompt_queue_history(server_id)
     queue = get_prompt_queue_queue(server_id)
     currently_running = get_prompt_queue_currently_running(server_id)
     #prompt_queue.delete_history_item(uuid)
     #prompt_queue.wipe_history()    
-    for step in queued_steps:
+    for step in batch_steps:
         found = False
         for key in history:
             if key == step.uuid:
@@ -388,7 +388,7 @@ def ws_queue_updated(server, message):
                     step.end_date = datetime.datetime.now()
                     step.status = 'finished'
                     # add outputs to item
-                    update_queue_step(step)
+                    update_batch_step(step)
                     order = 1
                     for node_id in history_item["outputs"].keys():
                          node_output = history_item["outputs"][node_id] 
@@ -396,8 +396,8 @@ def ws_queue_updated(server, message):
                              output = node_output[output_type]
                              for output_item in output:
                                  outp = {}
-                                 queue_run = get_queue_run_by_step_id(step.id)
-                                 selection_items = get_selection_items_from_step(queue_run, step)
+                                 batch_request = get_batch_request_by_step_id(step.id)
+                                 selection_items = get_selection_items_from_step(batch_request, step)
                                  outp["queue_step_uuid"] = step.uuid
                                  outp["uuid"] = str(uuid.uuid4())
                                  outp["value"] = output_item
@@ -421,7 +421,7 @@ def ws_queue_updated(server, message):
             if queued[1] == step.uuid:
                 if step.status != 'queued':
                     step.status = 'queued'
-                    update_queue_step(step)
+                    update_batch_step(step)
                 found = True
                 break
         for running in currently_running.values():
@@ -429,26 +429,26 @@ def ws_queue_updated(server, message):
                 if step.status != 'running':
                     step.start_date = datetime.datetime.now()
                     step.status = 'running'
-                    update_queue_step(step)
+                    update_batch_step(step)
                 found = True
                 break
         if not found:
             if step.retry>2:
                     step.status = "failed"
                     step.error = "Too many failed attempts"
-                    update_queue_step(step)
+                    update_batch_step(step)
                     continue
             step.retry += 1
             step.status = "queued"
-            updated_step = update_queue_step(step)
+            updated_step = update_batch_step(step)
             run_step(updated_step)
             break
             
     if len(get_prompt_queue_currently_running(server_id))==0 and len(get_prompt_queue_queue(server_id))<=0:
-        check_queue_runs()
+        check_batch_requests()
         
 
-def get_selection_items_from_run(run):
+def get_selection_items_from_batch_request(run):
     nodes = json.loads(run.nodes_values)
     selection_items = []
     for node in nodes:
@@ -466,8 +466,8 @@ def get_selection_items_from_run(run):
     return selection_items
             
 
-def get_selection_items_from_step(queue_run, step):
-    run_sel_items = get_selection_items_from_run(queue_run)
+def get_selection_items_from_step(batch_request, step):
+    run_sel_items = get_selection_items_from_batch_request(batch_request)
     
     step_sel_items = []
     
@@ -491,56 +491,56 @@ def get_selection_items_from_step(queue_run, step):
     return step_sel_items
     
 
-def check_queued_runs_finished(queued_run):    
-    if queued_run.total == queued_run.current:
-        runs = get_queue_steps_by_statuses_other_than(queued_run.uuid, ["finished","failed","invalid"])
+def check_batch_requests_finished(batch_request):    
+    if batch_request.total == batch_request.current:
+        runs = get_batch_steps_by_statuses_other_than(batch_request.uuid, ["finished","failed","invalid"])
         if not runs:
-            queued_run.status = "finished"
-            queued_run.end_time = datetime.datetime.now();
-            update_queue_run(queued_run)
-            #server.PromptServer.instance.send("executionFinished", queued_run.uuid, queued_run.client_id)
+            batch_request.status = "finished"
+            batch_request.end_time = datetime.datetime.now();
+            update_batch_request(batch_request)
+            #server.PromptServer.instance.send("executionFinished", batch_request.uuid, batch_request.client_id)
 
-            send_socket_message("executionFinished",{"run_uuid": queued_run.uuid}, queued_run.client_id)
+            send_socket_message("executionFinished",{"run_uuid": batch_request.uuid}, batch_request.client_id)
             return True
     return False
 
 
-def check_queued_runs_finished_uuid(uuid):
-    queued_run = get_queued_run_by_id(uuid)
-    check_queued_runs_finished(queued_run)
+def check_batch_requests_finished_uuid(uuid):
+    batch_request = get_batch_request_by_id(uuid)
+    check_batch_requests_finished(batch_request)
 
-def check_queue_runs():      
-    queued_runs = get_queue_runs_by_statuses(["queued", "running"])
+def check_batch_requests():      
+    batch_requests = get_batch_requests_by_statuses(["queued", "running"])
     queued_something = False
     added = False
-    for queued_run in queued_runs:
-        if check_queued_runs_finished(queued_run):
+    for batch_request in batch_requests:
+        if check_batch_requests_finished(batch_request):
             continue
         if added:
-            if queued_run.status!="queued":
-                queued_run.status = "queued"
-                update_queue_run(queued_run)
+            if batch_request.status!="queued":
+                batch_request.status = "queued"
+                update_batch_request(batch_request)
             continue
-        step = queued_run.current+1
+        step = batch_request.current+1
         # if this happens it basically means we're waiting for some failed steps to retry
-        if step > queued_run.total and queued_run.total>0:            
+        if step > batch_request.total and batch_request.total>0:            
             continue
         # have to execute the next result
-        added = execute_step_of_run(queued_run, step)
-        if queued_run.status!="running":
-            queued_run.status = "running"
-            update_queue_run(queued_run)
+        added = execute_step_of_run(batch_request, step)
+        if batch_request.status!="running":
+            batch_request.status = "running"
+            update_batch_request(batch_request)
         queued_something = True
 
-def execute_step_of_run(queued_run, step):
+def execute_step_of_run(batch_request, step):
     try: 
-         contents = create_prompt_for_step(queued_run, step, False)
+         contents = create_prompt_for_step(batch_request, step, False)
          #this is to be able to show it also in ui
          extra_data = {}
          extra_data["client_id"] = contents["client_id"]
-         enqueue_step(queued_run.uuid, queued_run.order, contents, extra_data, step, 1)
-         queued_run.current = step
-         update_queue_run(queued_run)
+         enqueue_step(batch_request.uuid, batch_request.order, contents, extra_data, step, 1)
+         batch_request.current = step
+         update_batch_request(batch_request)
          return True
     except:
         return False
@@ -549,25 +549,25 @@ def enqueue_step(run_uuid, priority, comfy_content, extra_data, curr_step, serve
     step = {}
     step_uuid = str(uuid.uuid4())
     step["uuid"] = step_uuid
-    step["queued_run_uuid"] = run_uuid
+    step["batch_request_uuid"] = run_uuid
     step["status"] = "queued"
     step["server"] = server_id
     step["step"] = curr_step
     step["run_value"] = make_json(comfy_content)
-    inserted_step = insert_queue_step(step)
+    inserted_step = insert_batch_step(step)
     run_step(inserted_step)
     
     return True
 
 def run_step_uuid(step_uuid):
-    step = get_queue_step_by_id(step_uuid)
+    step = get_batch_step_by_id(step_uuid)
     run_step(step)
 
 def run_step(step):
     comfy_content = json.loads(step.run_value)
     extra_data = {}
     extra_data["client_id"] = comfy_content["client_id"]
-    run = get_queued_run_by_id(step.queued_run_uuid)
+    run = get_batch_request_by_id(step.batch_request_uuid)
     priority = run.order
     valid = execution.validate_prompt(comfy_content["prompt"])
     if valid[0]:
@@ -577,7 +577,7 @@ def run_step(step):
         error = {"error": valid[1], "node_errors": valid[3]}
         step["error"] = make_json(error);
         step["status"] = "invalid"
-        update_queue_step(step)
+        update_batch_step(step)
     
     
 
@@ -628,7 +628,7 @@ def enqueue_prompt_by_type(client_id, workflow, api_uuid=None, job_uuid=None, ru
         print("invalid prompt:", root_valid[1])
         return {"error": root_valid[1], "error_type":"comfy_validation", "node_errors": root_valid[3]}
 
-    order = get_queue_runs_max_order()
+    order = get_batch_requests_max_order()
     if not order:
         order = 0
     total_cnt = 1
@@ -731,19 +731,19 @@ def enqueue_prompt_by_type(client_id, workflow, api_uuid=None, job_uuid=None, ru
 
 
      
-def create_prompt_for_step(queued_run, step, include_pos):
-    contents = json.loads(queued_run.run_values) 
+def create_prompt_for_step(batch_request, step, include_pos):
+    contents = json.loads(batch_request.run_values) 
    
-    total = queued_run.total
-    run_settings = json.loads(queued_run.run_settings)
+    total = batch_request.total
+    run_settings = json.loads(batch_request.run_settings)
     run_mode = run_settings["runMode"]
     number_of_runs = run_settings["numberOfRuns"]
     infinite = False
     if "infinite" in run_settings.keys():
         infinite = run_settings["infinite"]
     do_runs_in_sequence = run_settings["doRunsInSequence"]
-    nodes = json.loads(queued_run.nodes_values)
-    root_prompt = json.loads(queued_run.run_values)
+    nodes = json.loads(batch_request.nodes_values)
+    root_prompt = json.loads(batch_request.run_values)
      
     sequence_fields = run_settings["sequenceFields"]
     sequence_fields.sort(key=lambda x: x["order"],reverse = True)
@@ -795,8 +795,8 @@ def modify_comfy_node(contents, nodes, nodeId, fieldName, step, include_pos):
         comfy_node["pos"][field["fieldName"]] = int(value["p"])
 
 def execute_step_of_run_uuid(uuid, step):
-    queued_run = get_queued_run_by_id(uuid)
-    return execute_step_of_run(queued_run, step)
+    batch_request = get_batch_request_by_id(uuid)
+    return execute_step_of_run(batch_request, step)
 
 
             

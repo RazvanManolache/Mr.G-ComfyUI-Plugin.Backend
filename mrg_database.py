@@ -18,12 +18,12 @@ class BaseModel(Model): # js model
     class Meta:
         database = database
         
-def get_queue_info():
-    count = queue_runs.select(fn.SUM(queue_runs.total - queue_runs.current)).where(queue_runs.status.not_in(("completed","cancelled"))).scalar()
+def get_request_info():
+    count = batch_requests.select(fn.SUM(batch_requests.total - batch_requests.current)).where(batch_requests.status.not_in(("completed","cancelled"))).scalar()
     return count
 
-def get_queue_running():
-    return queue_runs.select().where(queue_runs.status == "running").count()
+def get_batch_requestning():
+    return batch_requests.select().where(batch_requests.status == "running").count()
 
 
     
@@ -386,9 +386,9 @@ def upsert_job(job):
         return model_to_dict(existing_row)
     
 
-# queue_runs - queue
+# batch_requests - queue
  
-class queue_runs(NamedObject): 
+class batch_requests(NamedObject): 
     workflow_uuid = ForeignKeyField(workflows, null=True,on_delete='SET NULL', backref='workflow') #saved
     api_uuid = ForeignKeyField(api, null=True,on_delete='SET NULL', backref='api') #saved
     job_uuid = ForeignKeyField(jobs, null=True,on_delete='SET NULL', backref='job') #saved
@@ -407,80 +407,80 @@ class queue_runs(NamedObject):
     run_values =  TextField(null=True) #saved
     current_values = TextField(null=True) #need to update
 
-def get_queue_runs_paged(page, per_page, order_column, order_dir, filt):
+def get_batch_requests_paged(page, per_page, order_column, order_dir, filt):
     #include outputs, workflow name, api name and job name
-    page_results = queue_runs.select().join(queue_steps).join(outputs).join(workflows).join(api).join(jobs).order_by(order_column).paginate(page, per_page)
+    page_results = batch_requests.select().join(batch_steps).join(outputs).join(workflows).join(api).join(jobs).order_by(order_column).paginate(page, per_page)
     if filt is not None:
         page_results = page_results.where(filt)
     page_results = page_results.dicts().execute()
-    total = queue_runs.select().count()
+    total = batch_requests.select().count()
     pages = total // per_page
     return {"items":page_results, "total":total, "pages":pages}
     
     
 
-def get_queue_run_status_for_uuid_list(uuids):
-    return queue_runs.select(queue_runs.uuid, queue_runs.status).where(queue_runs.uuid.in_(uuids)).dicts().execute()
+def get_batch_request_status_for_uuid_list(uuids):
+    return batch_requests.select(batch_requests.uuid, batch_requests.status).where(batch_requests.uuid.in_(uuids)).dicts().execute()
 
-def get_queue_runs_max_order():
-    return queue_runs.select(fn.MAX(queue_runs.order)).scalar()
+def get_batch_requests_max_order():
+    return batch_requests.select(fn.MAX(batch_requests.order)).scalar()
 
-def get_queue_runs_min_order():
-    return queue_runs.select(fn.MIN(queue_runs.order)).scalar()
+def get_batch_requests_min_order():
+    return batch_requests.select(fn.MIN(batch_requests.order)).scalar()
 
-def get_queue_runs_by_status(status):
-    return queue_runs.select().where(queue_runs.status == status).order_by(queue_runs.order)
+def get_batch_requests_by_status(status):
+    return batch_requests.select().where(batch_requests.status == status).order_by(batch_requests.order)
 
-def get_queue_runs_by_statuses(statuses):
-    return queue_runs.select().where(queue_runs.status.in_(statuses)).order_by(queue_runs.order)
+def get_batch_requests_by_statuses(statuses):
+    return batch_requests.select().where(batch_requests.status.in_(statuses)).order_by(batch_requests.order)
 
-def pause_queued_run(uuid):
+def pause_batch_request(uuid):
     #only if it is queued or running
-    run = queue_runs.get_by_id(uuid)
-    if run.status in ["queued", "running"]:
-        queue_runs.update(status="paused").where(queue_runs.uuid == uuid).execute()
+    batch_request = batch_requests.get_by_id(uuid)
+    if batch_request.status in ["queued", "running"]:
+        batch_requests.update(status="paused").where(batch_requests.uuid == uuid).execute()
     
-def cancel_queued_run(uuid):
+def cancel_batch_request(uuid):
     #only if it is queued or running or paused
-    run = queue_runs.get_by_id(uuid)
-    if run.status in ["queued", "running", "paused"]:
-        queue_runs.update(status="cancelled").where(queue_runs.uuid == uuid).execute()
+    batch_request = batch_requests.get_by_id(uuid)
+    if batch_request.status in ["queued", "running", "paused"]:
+        batch_requests.update(status="cancelled").where(batch_requests.uuid == uuid).execute()
     
-def resume_queued_run(uuid):
+def resume_batch_request(uuid):
     #only if total is greater than current
-    run = queue_runs.get_by_id(uuid)
-    if run.total > run.current:        
-        queue_runs.update(status="queued").where(queue_runs.uuid == uuid).execute()
+    batch_request = batch_requests.get_by_id(uuid)
+    if batch_request.total > batch_request.current:        
+        batch_requests.update(status="queued").where(batch_requests.uuid == uuid).execute()
        
-def get_queued_run_by_id(uuid):
-    return queue_runs.get_by_id(uuid)
+def get_batch_request_by_id(uuid):
+    return batch_requests.get_by_id(uuid)
 
-def get_queue_runs():
-    return queue_runs.select()
+def get_batch_requests():
+    return batch_requests.select()
 
 
-def get_queue_run(uuid):
-    return queue_runs.select().where(queue_runs.uuid == uuid).execute()
+def get_batch_request(uuid):
+    return batch_requests.select().where(batch_requests.uuid == uuid).execute()
 
-def delete_queue_run(uuid):
-    queue_runs.delete_by_id(uuid)
+def delete_batch_request(uuid):
+    batch_requests.delete_by_id(uuid)
 
-def insert_queue_run(queued_run):
-    queue_runs.insert(queued_run).execute()
-    return get_queue_run(queued_run["uuid"])[0]
+def insert_batch_request(batch_request):
+    batch_requests.insert(batch_request).execute()
+    return get_batch_request(batch_request["uuid"])[0]
 
-def update_queue_run(queued_run):
-    queued_run.update_date = datetime.datetime.now()
-    queued_run.save()
-    return get_queue_run(queued_run.uuid)[0]
+def update_batch_request(batch_request):
+    batch_request.update_date = datetime.datetime.now()
+    batch_request.save()
+    return get_batch_request(batch_request.uuid)[0]
 
-def get_queue_run_by_step_id(uuid):
-    return queue_runs.select().where(queue_runs.uuid == uuid).execute()[0]
+def get_batch_request_by_step_id(uuid):
+    return batch_requests.select().where(batch_requests.uuid == uuid).execute()[0]
 
-# queue_steps - queue results
+# batch_steps - queue results
 
-class queue_steps(BaseModel):
-    queued_run_uuid = ForeignKeyField(queue_runs, null=True,on_delete='SET NULL', backref='queued_run')
+class batch_steps(BaseModel):
+    batch_request_uuid = ForeignKeyField(batch_requests, null=True,on_delete='SET NULL', backref='batch_request')
     run_value = TextField()
     status = TextField(null=False) # queued, running, paused, cancelled, completed
     step = IntegerField(null=False)
@@ -492,73 +492,73 @@ class queue_steps(BaseModel):
     update_date = DateTimeField(null=False)
     end_date = DateTimeField(null=True) 
     
-def get_queue_step_by_id(uuid):
-    return queue_steps.get_by_id(uuid)
+def get_batch_step_by_id(uuid):
+    return batch_steps.get_by_id(uuid)
 
-def get_completed_queue_steps(queued_run_uuid):
-    return queue_steps.select().where(queue_steps.queued_run_uuid == queued_run_uuid, queue_steps.status == "completed").order_by(queue_steps.step)
+def get_completed_batch_steps(batch_request_uuid):
+    return batch_steps.select().where(batch_steps.batch_request_uuid == batch_request_uuid, batch_steps.status == "completed").order_by(batch_steps.step)
 
-def get_completed_queue_steps_count(queued_run_uuid):
-    return get_completed_queue_steps(queued_run_uuid).count()    
+def get_completed_batch_steps_count(batch_request_uuid):
+    return get_completed_batch_steps(batch_request_uuid).count()    
     
-def get_queue_steps_max_order(queued_run_uuid):
-    return queue_steps.select(fn.MAX(queue_steps.step)).where(queue_steps.queued_run_uuid == queued_run_uuid).scalar()
+def get_batch_steps_max_order(batch_request_uuid):
+    return batch_steps.select(fn.MAX(batch_steps.step)).where(batch_steps.batch_request_uuid == batch_request_uuid).scalar()
 
-def get_queue_steps_min_order(queued_run_uuid):
-    return queue_steps.select(fn.MIN(queue_steps.step)).where(queue_steps.queued_run_uuid == queued_run_uuid).scalar()
+def get_batch_steps_min_order(batch_request_uuid):
+    return batch_steps.select(fn.MIN(batch_steps.step)).where(batch_steps.batch_request_uuid == batch_request_uuid).scalar()
 
-def get_queue_steps(queued_run_uuid):
-    return queue_steps.select().where(queue_steps.queued_run_uuid == queued_run_uuid).order_by(queue_steps.step).dicts()
+def get_batch_steps(batch_request_uuid):
+    return batch_steps.select().where(batch_steps.batch_request_uuid == batch_request_uuid).order_by(batch_steps.step).dicts()
 
-def get_queue_steps_by_status_other_than(queued_run_uuid, status):
-    return queue_steps.select().where(queue_steps.queued_run_uuid == queued_run_uuid, queue_steps.status != status).order_by(queue_steps.step).dicts()
+def get_batch_steps_by_status_other_than(batch_request_uuid, status):
+    return batch_steps.select().where(batch_steps.batch_request_uuid == batch_request_uuid, batch_steps.status != status).order_by(batch_steps.step).dicts()
 
-def get_queue_steps_by_status(queued_run_uuid, status):
-    return queue_steps.select().where(queue_steps.queued_run_uuid == queued_run_uuid, queue_steps.status == status).order_by(queue_steps.step).dicts()
+def get_batch_steps_by_status(batch_request_uuid, status):
+    return batch_steps.select().where(batch_steps.batch_request_uuid == batch_request_uuid, batch_steps.status == status).order_by(batch_steps.step).dicts()
 
-def get_queue_steps_by_statuses_other_than(queued_run_uuid:str, statuses):
-    return queue_steps.select().where(queue_steps.queued_run_uuid == queued_run_uuid, queue_steps.status.not_in(statuses)).order_by(queue_steps.step).dicts()
+def get_batch_steps_by_statuses_other_than(batch_request_uuid:str, statuses):
+    return batch_steps.select().where(batch_steps.batch_request_uuid == batch_request_uuid, batch_steps.status.not_in(statuses)).order_by(batch_steps.step).dicts()
 
-def get_queue_steps_by_statuses(queued_run_uuid, statuses):
-    return queue_steps.select().where(queue_steps.queued_run_uuid == queued_run_uuid, queue_steps.status.in_(statuses)).order_by(queue_steps.step)
+def get_batch_steps_by_statuses(batch_request_uuid, statuses):
+    return batch_steps.select().where(batch_steps.batch_request_uuid == batch_request_uuid, batch_steps.status.in_(statuses)).order_by(batch_steps.step)
 
-def get_all_queue_steps_by_statuses(statuses):
-    return queue_steps.select().where(queue_steps.status.in_(statuses)).order_by(queue_steps.step)
+def get_all_batch_steps_by_statuses(statuses):
+    return batch_steps.select().where(batch_steps.status.in_(statuses)).order_by(batch_steps.step)
 
-def get_all_queue_steps_by_statuses_other_than(statuses):
-    return queue_steps.select().where(queue_steps.status.not_in(statuses)).order_by(queue_steps.step)
+def get_all_batch_steps_by_statuses_other_than(statuses):
+    return batch_steps.select().where(batch_steps.status.not_in(statuses)).order_by(batch_steps.step)
     
-def get_queue_steps_count(queued_run_uuid):
-    return queue_steps.select().where(queue_steps.queued_run_uuid == queued_run_uuid).count()
+def get_batch_steps_count(batch_request_uuid):
+    return batch_steps.select().where(batch_steps.batch_request_uuid == batch_request_uuid).count()
 
-def get_queue_steps_short():
-    return queue_steps.select()
+def get_batch_steps_short():
+    return batch_steps.select()
 
-def get_queue_steps_full():
-    return queue_steps.select()
+def get_batch_steps_full():
+    return batch_steps.select()
 
-def get_queue_step(uuid):
-    return queue_steps.select().where(queue_steps.uuid == uuid).execute()[0]
+def get_batch_step(uuid):
+    return batch_steps.select().where(batch_steps.uuid == uuid).execute()[0]
 
-def delete_queue_step(uuid):
-    queue_steps.delete_by_id(uuid)
+def delete_batch_step(uuid):
+    batch_steps.delete_by_id(uuid)
     
-def insert_queue_step(queue_step):
+def insert_batch_step(batch_step):
     now = datetime.datetime.now()
-    queue_step["create_date"] = now
-    queue_step["update_date"] = now
-    queue_steps.insert(queue_step).execute()
-    return get_queue_step(queue_step["uuid"])
+    batch_step["create_date"] = now
+    batch_step["update_date"] = now
+    batch_steps.insert(batch_step).execute()
+    return get_batch_step(batch_step["uuid"])
 
-def update_queue_step(queue_step):
-    queue_step.update_date = datetime.datetime.now()
-    queue_step.save()
-    return get_queue_step(queue_step.uuid)
+def update_batch_step(batch_step):
+    batch_step.update_date = datetime.datetime.now()
+    batch_step.save()
+    return get_batch_step(batch_step.uuid)
 
 # output - output from the run
 
 class outputs(BaseModel):
-    queue_step_uuid = ForeignKeyField(queue_steps, null=True,on_delete='SET NULL', backref='queue_step')
+    batch_step_uuid = ForeignKeyField(batch_steps, null=True,on_delete='SET NULL', backref='batch_step')
     value = TextField(null=False)
     order = IntegerField(null=False)
     node_id = IntegerField(null=False)
@@ -567,8 +567,8 @@ class outputs(BaseModel):
     update_date = DateTimeField(null=False)
     rating = SmallIntegerField(default=0)
 
-def get_all_outputs_for_run(queued_run_uuid):
-    return outputs.select().join(queue_steps).where(queue_steps.queued_run_uuid == queued_run_uuid).order_by(outputs.order).dicts().execute()
+def get_all_outputs_for_run(batch_request_uuid):
+    return outputs.select().join(batch_steps).where(batch_steps.batch_request_uuid == batch_request_uuid).order_by(outputs.order).dicts().execute()
 
 def get_output(uuid):
     return outputs.get_by_id(uuid)
@@ -580,11 +580,11 @@ def get_outputs():
 def get_outputs_paginated(page, per_page, orderby, order_name, order_dir):
     page_results = outputs.select().paginate(page, per_page)
     #include step info
-    page_results = page_results.join(queue_steps).join(queue_runs).join(workflows).join(api).join(jobs)
+    page_results = page_results.join(batch_steps).join(batch_requests).join(workflows).join(api).join(jobs)
     
     # select only the fields we need, everything from outputs and only the name from the other tables
 
-    page_results = page_results.select(outputs, queue_runs.uuid.alias("queue_run_uuid"), 
+    page_results = page_results.select(outputs, batch_requests.uuid.alias("batch_request_uuid"), 
                                        workflows.uuid.alias("workflow_uuid"), workflows.name.alias("workflow_name"), 
                                        api.uuid.alias("api_uuid"), api.name.alias("api_name"),
                                        jobs.uuid.alias("job_uuid"), jobs.name.alias("job_name")
@@ -598,20 +598,20 @@ def get_outputs_paginated(page, per_page, orderby, order_name, order_dir):
     pages = total // per_page
     return {"items":page_results, "total":total, "pages":pages}
 
-def get_outputs_by_queue_step(queue_step_uuid):
-    return outputs.select().where(outputs.queue_step_uuid == queue_step_uuid).order_by(outputs.order)
+def get_outputs_by_batch_step(batch_step_uuid):
+    return outputs.select().where(outputs.batch_step_uuid == batch_step_uuid).order_by(outputs.order)
 
-def get_outputs_by_queue_step_and_node_id(queue_step_uuid, node_id):
-    return outputs.select().where(outputs.queue_step_uuid == queue_step_uuid, outputs.node_id == node_id).order_by(outputs.order)
+def get_outputs_by_batch_step_and_node_id(batch_step_uuid, node_id):
+    return outputs.select().where(outputs.batch_step_uuid == batch_step_uuid, outputs.node_id == node_id).order_by(outputs.order)
 
-def get_outputs_by_queue_step_and_node_id_and_output_type(queue_step_uuid, node_id, output_type):
-    return outputs.select().where(outputs.queue_step_uuid == queue_step_uuid, outputs.node_id == node_id, outputs.output_type == output_type).order_by(outputs.order)
+def get_outputs_by_batch_step_and_node_id_and_output_type(batch_step_uuid, node_id, output_type):
+    return outputs.select().where(outputs.batch_step_uuid == batch_step_uuid, outputs.node_id == node_id, outputs.output_type == output_type).order_by(outputs.order)
 
-def get_outputs_by_queue_step_and_output_type(queue_step_uuid, output_type):
-    return outputs.select().where(outputs.queue_step_uuid == queue_step_uuid, outputs.output_type == output_type).order_by(outputs.order)
+def get_outputs_by_batch_step_and_output_type(batch_step_uuid, output_type):
+    return outputs.select().where(outputs.batch_step_uuid == batch_step_uuid, outputs.output_type == output_type).order_by(outputs.order)
 
 def get_outputs_by_node_run_uuid(node_run_uuid):
-    return outputs.select().join(queue_steps).where(queue_steps.queued_run_uuid == node_run_uuid).order_by(outputs.order)
+    return outputs.select().join(batch_steps).where(batch_steps.batch_request_uuid == node_run_uuid).order_by(outputs.order)
 
 def update_output_rating(uuid, rating):
     outputs.update(rating=rating).where(outputs.uuid == uuid).execute()
@@ -687,7 +687,7 @@ def upsert_setting(setting):
 
 def create_tables():
     with database:
-        database.create_tables([selection_items, settings, categories,workflows, queue_runs, queue_steps, outputs, api, jobs, package_repositories, packages ])
+        database.create_tables([selection_items, settings, categories,workflows, batch_requests, batch_steps, outputs, api, jobs, package_repositories, packages ])
         
 create_tables()
 

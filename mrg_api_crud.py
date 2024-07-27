@@ -50,12 +50,6 @@ async def install_package(request):
     package_uuid = json_data['uuid']
     return json_response({})
 
-@server.PromptServer.instance.routes.put('/mrg/available_packages')
-async def available_packages(request):
-    json_data = await request.json()
-    upsert_available_packages(json_data)
-    return json_response({})
-
 
 @server.PromptServer.instance.routes.delete('/mrg/uninstall_package')
 async def uninstall_package(request):

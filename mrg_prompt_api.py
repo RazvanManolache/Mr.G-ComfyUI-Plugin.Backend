@@ -68,9 +68,9 @@ async def mrg_prompt(request):
     if "error" in result:
         return json_response(result)
     
-    queued_run = insert_queue_run(result)
-    check_queue_runs()
-    new_prompt = create_prompt_for_step(queued_run, result["total"]+1, True)
+    batch_request = insert_batch_request(result)
+    check_batch_requests()
+    new_prompt = create_prompt_for_step(batch_request, result["total"]+1, True)
     response = {}
     response["success"] = "OK"
     response["run_uuid"] = str(result["uuid"])
