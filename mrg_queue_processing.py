@@ -99,7 +99,7 @@ def process_socket_api_request(sid, data):
                         contents = base64.b64encode(file.read()).decode("utf-8")
                 output_result = {"name": filename, "type":output_type, "contents":contents}
                 output_results.append(output_result)
-            return {"type": "resultPushed", "result": { "outputs":output_results, "run_uuid":data["uuid"]}}
+            return {"type": "resultPushed", "result": { "outputs":output_results, "batch_request_uuid":data["uuid"]}}
             pass
         elif data["type"] == "executeApi":
             if("requestId" not in data):
@@ -218,7 +218,7 @@ def process_job_request(client_id, job_ob):
     
     response = {}
     response["success"] = "OK"
-    response["run_uuid"] = [str(x["queue"]["uuid"]) for x in job_ob["workflows"]]
+    response["batch_request_uuids"] = [str(x["queue"]["uuid"]) for x in job_ob["workflows"]]
     
     return response
 
@@ -297,7 +297,7 @@ def process_api_request(client_id, api_ob, params):
     
     response = {}
     response["success"] = "OK"
-    response["run_uuid"] = [str(x["queue"]["uuid"]) for x in api_ob["workflows"]]
+    response["batch_request_uuids"] = [str(x["queue"]["uuid"]) for x in api_ob["workflows"]]
     
     return response
 
@@ -500,7 +500,7 @@ def check_batch_requests_finished(batch_request):
             update_batch_request(batch_request)
             #server.PromptServer.instance.send("executionFinished", batch_request.uuid, batch_request.client_id)
 
-            send_socket_message("executionFinished",{"run_uuid": batch_request.uuid}, batch_request.client_id)
+            send_socket_message("executionFinished",{"batch_request_uuid": batch_request.uuid}, batch_request.client_id)
             return True
     return False
 
@@ -526,13 +526,13 @@ def check_batch_requests():
         if step > batch_request.total and batch_request.total>0:            
             continue
         # have to execute the next result
-        added = execute_step_of_run(batch_request, step)
+        added = execute_step_of_batch_request(batch_request, step)
         if batch_request.status!="running":
             batch_request.status = "running"
             update_batch_request(batch_request)
         queued_something = True
 
-def execute_step_of_run(batch_request, step):
+def execute_step_of_batch_request(batch_request, step):
     try: 
          contents = create_prompt_for_step(batch_request, step, False)
          #this is to be able to show it also in ui
@@ -545,11 +545,11 @@ def execute_step_of_run(batch_request, step):
     except:
         return False
 
-def enqueue_step(run_uuid, priority, comfy_content, extra_data, curr_step, server_id):
+def enqueue_step(batch_request_uuid, priority, comfy_content, extra_data, curr_step, server_id):
     step = {}
     step_uuid = str(uuid.uuid4())
     step["uuid"] = step_uuid
-    step["batch_request_uuid"] = run_uuid
+    step["batch_request_uuid"] = batch_request_uuid
     step["status"] = "queued"
     step["server"] = server_id
     step["step"] = curr_step
@@ -794,9 +794,9 @@ def modify_comfy_node(contents, nodes, nodeId, fieldName, step, include_pos):
             comfy_node["pos"] = {}
         comfy_node["pos"][field["fieldName"]] = int(value["p"])
 
-def execute_step_of_run_uuid(uuid, step):
+def execute_step_of_batch_request_uuid(uuid, step):
     batch_request = get_batch_request_by_id(uuid)
-    return execute_step_of_run(batch_request, step)
+    return execute_step_of_batch_request(batch_request, step)
 
 
             

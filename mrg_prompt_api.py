@@ -73,7 +73,7 @@ async def mrg_prompt(request):
     new_prompt = create_prompt_for_step(batch_request, result["total"]+1, True)
     response = {}
     response["success"] = "OK"
-    response["run_uuid"] = str(result["uuid"])
+    response["batch_request_uuid"] = str(result["uuid"])
     response["prompt"] = new_prompt
     response["changes"] = get_values_and_pos_from_prompt(new_prompt)    
     return json_response(response)
