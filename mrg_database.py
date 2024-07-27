@@ -170,6 +170,15 @@ def get_selection_items(field_type, node_type):
     return selection_items.select().where(selection_items.field_type == field_type, selection_items.node_type == node_type)
 
 
+def get_selection_item_by_node_field_value(node_type, field_type, value): 
+    result = selection_items.select().where(selection_items.node_type == node_type, selection_items.field_type == field_type, selection_items.comfy_name == value).execute()
+    if len(result) == 1:
+        return result[0]
+    result = selection_items.select().where(selection_items.field_type == field_type, selection_items.comfy_name == value or selection_items.text == value).execute()
+    if len(result) == 1:
+        return result[0]
+    return None
+    
 def upsert_selection_items(sel_item):
     existing_row = None
     sel_item["update_date"] = datetime.datetime.now()

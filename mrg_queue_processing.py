@@ -13,7 +13,6 @@ import pylab as pl
 
 from doctest import debug
 from fileinput import filename
-from re import L
 from tokenize import String
 from asyncio.windows_events import NULL
 from calendar import c
@@ -397,6 +396,8 @@ def ws_queue_updated(server, message):
                              output = node_output[output_type]
                              for output_item in output:
                                  outp = {}
+                                 queue_run = get_queue_run_by_step_id(step.id)
+                                 selection_items = get_selection_items_from_step(queue_run, step)
                                  outp["queue_step_uuid"] = step.uuid
                                  outp["uuid"] = str(uuid.uuid4())
                                  outp["value"] = output_item
@@ -404,7 +405,14 @@ def ws_queue_updated(server, message):
                                  outp["node_id"] = node_id
                                  outp["order"] = order
                                  order += 1
-                                 insert_output(outp)
+                                 outp = insert_output(outp)
+                                 if selection_items:
+                                     for selection_item in selection_items:
+                                         outp_sel = {}
+                                         outp_sel["output_uuid"] = outp.uuid
+                                         outp_sel["selection_item_uuid"] = selection_item.uuid
+                                         insert_output_link(outp_sel)
+                                 
                          
                     delete_history_item(server_id, key)
                 found = True
@@ -438,8 +446,51 @@ def ws_queue_updated(server, message):
             
     if len(get_prompt_queue_currently_running(server_id))==0 and len(get_prompt_queue_queue(server_id))<=0:
         check_queue_runs()
+        
 
+def get_selection_items_from_run(run):
+    nodes = json.loads(run.nodes_values)
+    selection_items = []
+    for node in nodes:
+        fields = node["fieldValues"]
+        for field_name in fields.keys():
+            field = fields[field_name]
+            if not field["linkField"]:
+                selection_item = {}
+                selection_item["nodeId"] = node["id"]
+                selection_item["fieldName"] = field["fieldName"]
+                selection_item["fieldType"] = field["fieldType"]
+                selection_item["nodeType"] = node["className"]
+                selection_item["filteredSelectedSets"] = field["filteredSelectedSets"]
+                selection_items.append(selection_item)
+    return selection_items
+            
+
+def get_selection_items_from_step(queue_run, step):
+    run_sel_items = get_selection_items_from_run(queue_run)
     
+    step_sel_items = []
+    
+    #get the values
+    nodes_values = json.loads(step.nodes_values)
+    for node_value in nodes_values["nodes"]:
+        node_run_sel_items = [x for x in run_sel_items if x["nodeId"] == node_value["id"]]
+        for run_sel_item in node_run_sel_items:
+            i = 0                
+            for field_value in node_value["widgets_values"]:
+                node_run_sel_item = node_run_sel_items[i]
+                node_run_sel_item["value"] = field_value
+                i += 1
+    #get the selection items via value
+    for run_sel_item in run_sel_items:
+        sel_item = get_selection_item_by_node_field_value(run_sel_item["nodeType"], run_sel_item["fieldType"], run_sel_item["value"])
+        if sel_item:
+            run_sel_item["uuid"] = sel_item["uuid"]
+            step_sel_items.append(run_sel_item)
+            
+    return step_sel_items
+    
+
 def check_queued_runs_finished(queued_run):    
     if queued_run.total == queued_run.current:
         runs = get_queue_steps_by_statuses_other_than(queued_run.uuid, ["finished","failed","invalid"])

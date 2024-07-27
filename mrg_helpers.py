@@ -109,6 +109,7 @@ ComfyTypeMappings = [
     ComfyTypeMapping("image","", 1, "nodes.LoadImage.INPUT_TYPES()['required']['image'][0]"),
     ComfyTypeMapping("image","LoadImageMask", 1, "nodes.LoadImageMask.INPUT_TYPES()['required']['image'][0]"),
     ComfyTypeMapping("channel","LoadImageMask", 1, "nodes.LoadImageMask._color_channels"),
+    ComfyTypeMapping("type","ClipLoader", 1, "nodes.ClipLoader.INPUT_TYPES()['required']['type'][0]"),
     ComfyTypeMapping("upscale_method","ImageScale", 1, "nodes.ImageScale.upscale_methods"),
     ComfyTypeMapping("upscale_method","ImageScaleBy", 1, "nodes.ImageScaleBy.upscale_methods"),
     ComfyTypeMapping("set_cond_area","ConditioningSetMask", 1, "nodes.ConditioningSetMask.INPUT_TYPES()['required']['set_cond_area'][0]"),
