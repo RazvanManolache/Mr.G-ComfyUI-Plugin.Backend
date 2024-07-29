@@ -66,22 +66,22 @@ def selection_item_get_internal(field_type, node_type):
                     if mapping["type"] == 0 :
                         path = PurePath(entry)
                         #TODO: try to also get images from these subfolders
-                        selection_items.insert(uuid=uuid.uuid4(), 
-                                              name=path.name,
-                                              path= path.parents[0],
-                                              alias=path.name,
-                                              comfy_name=entry, 
-                                              text=entry, 
-                                              field_type = field_type,
-                                              node_type = mapping["cls"] ).execute()                    
+                        upsert_selection_items({"uuid":uuid.uuid4(), 
+                                              "name":path.name,
+                                              "path":path.parents[0],                                              
+                                              "alias":path.name,
+                                              "comfy_name":entry, 
+                                              "text":entry, 
+                                              "field_type": field_type,
+                                              "node_type": mapping["cls"] })               
                     else:
-                        selection_items.insert(uuid=uuid.uuid4(), 
-                                              name=entry, 
-                                              alias=entry,
-                                              comfy_name=entry, 
-                                              text=entry, 
-                                              field_type = field_type,
-                                              node_type = mapping["cls"] ).execute()
+                        upsert_selection_items({"uuid":uuid.uuid4(), 
+                                              "name":entry, 
+                                              "alias":entry,
+                                              "comfy_name":entry, 
+                                              "text":entry, 
+                                              "field_type": field_type,
+                                              "node_type": mapping["cls"] })
             if should_refresh_dbdata:
                 db_data = list(get_selection_items(field_type, mapping["cls"]).dicts())
             db_data = list(filter(lambda row: row["comfy_name"] in mapping["data"], db_data))

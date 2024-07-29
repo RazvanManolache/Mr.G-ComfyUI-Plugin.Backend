@@ -39,6 +39,11 @@ async def package_repositories_delete(request):
 
 # packages - get, update, delete
 
+@server.PromptServer.instance.routes.get('/mrg/available_packages')
+async def available_packages(request):
+    data = get_packages().dicts()
+    return json_response(list(data))
+
 @server.PromptServer.instance.routes.get('/mrg/installed_packages')
 async def installed_packages(request):
     data = get_packages().dicts()

@@ -15,7 +15,7 @@ from .mrg_bundle import *
 
 @server.PromptServer.instance.routes.get('/mrg/bundle')
 async def picker_texts_update(request):
-    bundle_javascript_files("/ComfyUI/web/mrg/app/", "/bundle.js")
+    bundle_javascript_files("/ComfyUI/web/mrg/app/", "bundle.js")
     return web.HTTPTemporaryRedirect('app/bundle.js')
 
 @server.PromptServer.instance.routes.get('/mrg/categories_tree')
@@ -86,5 +86,40 @@ async def selection_items_delete(request):
     data = await request.post()
     delete_selection_items(data['uuid'])
     return web.Response(status=200)
+
+
+# output - get, edit, delete
+@server.PromptServer.instance.routes.get('/mrg/output')
+async def output_get(request):
+    if "uuid" in request.rel_url.query:
+        uuid = request.rel_url.query["uuid"]
+    data = get_output(uuid)
+    data = model_to_dict(data)
+    return json_response(data)
+
+#example request
+#http://127.0.0.1:8188/mrg/outputs?_dc=1722268183209&page=1&start=0&limit=25
+@server.PromptServer.instance.routes.get('/mrg/outputs')
+async def outputs_get(request):
+    page = 1
+    limit = 25
+    start = 0
+    filt = ""
+    if "page" in request.rel_url.query:
+        page = int(request.rel_url.query["page"])
+    if "limit" in request.rel_url.query:
+        limit = int(request.rel_url.query["limit"])
+    if "start" in request.rel_url.query:
+        start = int(request.rel_url.query["start"])
+    if "filter" in request.rel_url.query:
+        filt = request.rel_url.query["filter"]
+    orderby = ""
+    order_dir = "ASC"
+    
+    data = get_outputs_paginated(page, limit, orderby, order_dir, filt)
+    return json_response(data)
+    
+    
+    
 
 

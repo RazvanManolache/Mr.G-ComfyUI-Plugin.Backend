@@ -1,4 +1,5 @@
 import datetime
+import logging
 from re import T
 from peewee import *
 from playhouse.shortcuts import model_to_dict
@@ -12,6 +13,9 @@ database = SqliteDatabase(dbName, pragmas={
     'cache_size': 10000,  # 10000 pages, or ~40MB
     'foreign_keys': 1,  # Enforce foreign-key constraints
 })
+logger = logging.getLogger('peewee')
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.DEBUG)
 
 class BaseModel(Model): # js model
     uuid = TextField(primary_key=True)
@@ -152,7 +156,7 @@ class selection_items(NamedObject): #js model
     text = TextField()
     hidden = BooleanField(default=False)
     favorite = BooleanField(default=False)
-    field = TextField()
+    field = TextField(null=True)
     field_type = TextField()
     node_type = TextField()
     path = TextField(null=True)
@@ -573,14 +577,18 @@ def get_all_outputs_for_run(batch_request_uuid):
 def get_output(uuid):
     return outputs.get_by_id(uuid)
 
-def get_outputs():
-    return outputs.select()
 
 
-def get_outputs_paginated(page, per_page, orderby, order_name, order_dir):
+def get_outputs_paginated(page, per_page, orderby, order_dir, filt):
     page_results = outputs.select().paginate(page, per_page)
     #include step info
-    page_results = page_results.join(batch_steps).join(batch_requests).join(workflows).join(api).join(jobs)
+    page_results = (page_results.join(batch_steps, on=outputs.batch_step_uuid == batch_steps.uuid)
+                                .join(batch_requests, on= batch_steps.batch_request_uuid == batch_requests.uuid)
+                                .join_from(batch_requests, workflows, JOIN.LEFT_OUTER, on=batch_requests.workflow_uuid== workflows.uuid)
+                                .join_from(batch_requests, api, JOIN.LEFT_OUTER, on=batch_requests.api_uuid == api.uuid)
+                                .join_from(batch_requests, jobs, JOIN.LEFT_OUTER, on=batch_requests.job_uuid == jobs.uuid))
+    
+
     
     # select only the fields we need, everything from outputs and only the name from the other tables
 
@@ -593,7 +601,7 @@ def get_outputs_paginated(page, per_page, orderby, order_name, order_dir):
     if orderby is not None:
         page_results = page_results.order_by(orderby)
     
-    page_results = page_results.dicts().execute()
+    page_results = list(page_results.dicts().execute())
     total = outputs.select().count()
     pages = total // per_page
     return {"items":page_results, "total":total, "pages":pages}
@@ -698,5 +706,5 @@ def create_default_data():
     upsert_category({"uuid":"00000000-0003-0000-0000-000000000000","name":"No category","icon":"x-fa fa-question","system":True,"order":-9997})
     upsert_category({"uuid":"00000000-0002-0000-0000-000000000000","name":"All","icon":"x-fa fa-globe","system":True,"order":-9998})
 
-        
+create_default_data()
 
