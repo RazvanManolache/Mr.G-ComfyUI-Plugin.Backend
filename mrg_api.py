@@ -51,7 +51,7 @@ async def categories_get_tree(request):
 async def selection_items_types(request):
     for item in ComfyTypeMappings:
         item.refresh_data()
-        item['db_data'] =  list(get_selection_items(item['field'], item['cls']).dicts())
+        item['db_data'] =  list(selection_item_get_internal(item['field'], item['cls']))
     return json_response(list(ComfyTypeMappings))
 
 @server.PromptServer.instance.routes.get('/mrg/selection_item')

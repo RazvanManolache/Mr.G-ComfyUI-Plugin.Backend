@@ -15,7 +15,7 @@ database = SqliteDatabase(dbName, pragmas={
 })
 logger = logging.getLogger('peewee')
 logger.addHandler(logging.StreamHandler())
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.ERROR)
 
 class BaseModel(Model): # js model
     uuid = TextField(primary_key=True)
@@ -479,7 +479,10 @@ def update_batch_request(batch_request):
     return get_batch_request(batch_request.uuid)[0]
 
 def get_batch_request_by_step_id(uuid):
-    return batch_requests.select().where(batch_requests.uuid == uuid).execute()[0]
+    result = batch_requests.select().join(batch_steps).where(batch_steps.uuid == uuid).execute()
+    if len(result) == 1:
+        return result[0]
+    return None
 
 # batch_steps - queue results
 
@@ -604,7 +607,7 @@ def get_outputs_paginated(page, per_page, orderby, order_dir, filt):
     page_results = list(page_results.dicts().execute())
     total = outputs.select().count()
     pages = total // per_page
-    return {"items":page_results, "total":total, "pages":pages}
+    return {"data":page_results, "total":total, "pages":pages, "success": True}
 
 def get_outputs_by_batch_step(batch_step_uuid):
     return outputs.select().where(outputs.batch_step_uuid == batch_step_uuid).order_by(outputs.order)
@@ -630,6 +633,7 @@ def delete_output(uuid):
 def insert_output(output):
     now = datetime.datetime.now()
     output["create_date"] = now
+    output["update_date"] = now
     outputs.insert(output).execute()
     return get_output(output["uuid"])
 

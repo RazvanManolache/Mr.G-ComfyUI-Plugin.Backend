@@ -3,6 +3,7 @@ import random
 import asyncio
 import datetime
 import base64
+
 import server
 import execution
 import json
@@ -396,11 +397,13 @@ def ws_queue_updated(server, message):
                              output = node_output[output_type]
                              for output_item in output:
                                  outp = {}
-                                 batch_request = get_batch_request_by_step_id(step.id)
+                                 batch_request = get_batch_request_by_step_id(step.uuid)
+                                 if not batch_request:
+                                     continue
                                  selection_items = get_selection_items_from_step(batch_request, step)
-                                 outp["queue_step_uuid"] = step.uuid
+                                 outp["batch_step_uuid"] = step.uuid
                                  outp["uuid"] = str(uuid.uuid4())
-                                 outp["value"] = output_item
+                                 outp["value"] = make_json(output_item)
                                  outp["output_type"] = output_type
                                  outp["node_id"] = node_id
                                  outp["order"] = order
@@ -461,7 +464,8 @@ def get_selection_items_from_batch_request(run):
                 selection_item["fieldName"] = field["fieldName"]
                 selection_item["fieldType"] = field["fieldType"]
                 selection_item["nodeType"] = node["className"]
-                selection_item["filteredSelectedSets"] = field["filteredSelectedSets"]
+                if "filteredSelectedSets" in field.keys():
+                    selection_item["filteredSelectedSets"] = field["filteredSelectedSets"]
                 selection_items.append(selection_item)
     return selection_items
             
@@ -472,21 +476,24 @@ def get_selection_items_from_step(batch_request, step):
     step_sel_items = []
     
     #get the values
-    nodes_values = json.loads(step.nodes_values)
-    for node_value in nodes_values["nodes"]:
-        node_run_sel_items = [x for x in run_sel_items if x["nodeId"] == node_value["id"]]
+    nodes_values = json.loads(step.run_value)["prompt"]
+    for node_key in nodes_values:
+        node_value = nodes_values[node_key]
+        node_run_sel_items = [x for x in run_sel_items if x["nodeId"] == node_key]
         for run_sel_item in node_run_sel_items:
-            i = 0                
-            for field_value in node_value["widgets_values"]:
-                node_run_sel_item = node_run_sel_items[i]
-                node_run_sel_item["value"] = field_value
-                i += 1
+            for field_key in node_value["inputs"]:
+                if field_key == run_sel_item["fieldName"]:
+                    field_value = node_value["inputs"][field_key]
+                    run_sel_item["value"] = field_value
+                
+               
     #get the selection items via value
     for run_sel_item in run_sel_items:
-        sel_item = get_selection_item_by_node_field_value(run_sel_item["nodeType"], run_sel_item["fieldType"], run_sel_item["value"])
-        if sel_item:
-            run_sel_item["uuid"] = sel_item["uuid"]
-            step_sel_items.append(run_sel_item)
+        if "value" in run_sel_item:
+            sel_item = get_selection_item_by_node_field_value(run_sel_item["nodeType"], run_sel_item["fieldType"], run_sel_item["value"])
+            if sel_item:
+                run_sel_item["uuid"] = sel_item["uuid"]
+                step_sel_items.append(run_sel_item)
             
     return step_sel_items
     
