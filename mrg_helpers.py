@@ -15,11 +15,13 @@ from pathlib import PurePath, Path
 from aiohttp import web
 
 
-from .mrg_database import *
+from . import mrg_database
 
 class Empty(dict):
     pass   
 
+def get_current_path():
+    return os.path.dirname(os.path.realpath(__file__))
 
 async def send_socket_message_internal(message_type, msg, client_id):
     await server.PromptServer.instance.send(message_type, msg, client_id)
@@ -39,6 +41,15 @@ def json_response(data):
             status = data["status"]
     return web.json_response(data, content_type='application/json',status=status, dumps=to_json)
 
+def read_json(file):    
+    if not os.path.exists(file):
+        return None
+    try:
+        with open(file) as f:
+            return json.load(f)
+    except:
+        return None
+
 def remove_not_needed_properties(cls, dic):
     props = dir(cls)
     keys = list(dic.keys())
@@ -50,7 +61,7 @@ def selection_item_get_internal(field_type, node_type):
     db_data = []
     mapping  = get_selectiondata_by_type(field_type, node_type)
     if mapping != None:
-        db_data = list(get_selection_items(field_type, mapping["cls"]).dicts())
+        db_data = list(mrg_database.get_selection_items(field_type, mapping["cls"]).dicts())
         if mapping["type"] !=2 :
             should_refresh_dbdata = False
             for entry in mapping["data"]:
@@ -66,7 +77,7 @@ def selection_item_get_internal(field_type, node_type):
                     if mapping["type"] == 0 :
                         path = PurePath(entry)
                         #TODO: try to also get images from these subfolders
-                        upsert_selection_items({"uuid":uuid.uuid4(), 
+                        mrg_database.upsert_selection_items({"uuid":uuid.uuid4(), 
                                               "name":path.name,
                                               "path":path.parents[0],                                              
                                               "alias":path.name,
@@ -75,7 +86,7 @@ def selection_item_get_internal(field_type, node_type):
                                               "field_type": field_type,
                                               "node_type": mapping["cls"] })               
                     else:
-                        upsert_selection_items({"uuid":uuid.uuid4(), 
+                        mrg_database.upsert_selection_items({"uuid":uuid.uuid4(), 
                                               "name":entry, 
                                               "alias":entry,
                                               "comfy_name":entry, 
@@ -83,10 +94,10 @@ def selection_item_get_internal(field_type, node_type):
                                               "field_type": field_type,
                                               "node_type": mapping["cls"] })
             if should_refresh_dbdata:
-                db_data = list(get_selection_items(field_type, mapping["cls"]).dicts())
+                db_data = list(mrg_database.get_selection_items(field_type, mapping["cls"]).dicts())
             db_data = list(filter(lambda row: row["comfy_name"] in mapping["data"], db_data))
         else:
-            db_data = list(get_selection_items(field_type, "*").dicts())
+            db_data = list(mrg_database.get_selection_items(field_type, "*").dicts())
     return db_data
 
 class ComfyTypeMapping(dict):

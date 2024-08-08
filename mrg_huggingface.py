@@ -56,6 +56,17 @@ def use_pipeline(repo_id, task):
     pipe = pipeline(task, model=repo_id)
     return pipe
 
+def copy_folder_from_repo(repo_dir, folder_path, dest_path):
+    """
+    Copy a specific folder from the repository to the destination directory.
+    """
+    src_folder = os.path.join(repo_dir, folder_path)
+    if os.path.exists(src_folder):
+        if os.path.exists(dest_path):
+            shutil.rmtree(dest_path)
+        shutil.copytree(src_folder, dest_path)
+        print(f"Folder {folder_path} copied to {dest_path}")
+
 # if __name__ == "__main__":
 #     REPO_ID = "bert-base-uncased"
 #     REPO_DIR = "/path/to/huggingface/repository"

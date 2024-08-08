@@ -7,19 +7,18 @@ import urllib
 import json
 import aiohttp 
 import comfy.model_management
+import server
 
 from io import BytesIO
 from aiohttp import web
 from server import *
 
-from .mrg_server import *
-from .mrg_helpers import *
-from .mrg_prompt_api import *
+from . import mrg_prompt_api
 
 # want to handle more cases for websockets, don't want to work too hard to get it
 async def mrg_handle_socket_request(sid, data):
     self = server.PromptServer.instance        
-    result = process_socket_api_request(sid, data)
+    result = mrg_prompt_api.process_socket_api_request(sid, data)
     if result is not None:
         await self.send(result["type"], result["result"], sid)
    

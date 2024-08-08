@@ -3,12 +3,14 @@ import random
 import asyncio
 import datetime
 import base64
-
+import uuid
 import server
 import execution
 import json
 import copy
 import math
+import os
+import folder_paths
 
 import pylab as pl
 
@@ -20,8 +22,8 @@ from calendar import c
 from aiohttp import web
 from execution import *
 
-from .mrg_database import *
-from .mrg_helpers import *
+from . import mrg_database
+from . import mrg_helpers
 
 
 from types import SimpleNamespace
@@ -37,10 +39,10 @@ def make_json(obj):
     return json.dumps(obj, default=get_obj_dict,separators=(',', ':'))
 
 def queded_run_result_finished(uuid):
-    result = get_batch_step_by_id(uuid)
+    result = mrg_database.get_batch_step_by_id(uuid)
     result.status = "finished"
     result.end_time = datetime.datetime.now();    
-    update_batch_step(result)
+    mrg_database.update_batch_step(result)
     check_batch_requests_finished_uuid(result["batch_request_uuid"])
     
 def check_comfy_queue():
@@ -78,10 +80,10 @@ def process_socket_api_request(sid, data):
             ob = { "query": [], "result":[]} 
             if "uuids" in data and type(data["uuids"]) is list:
                 ob["query"] = data["uuids"]
-                ob["result"] = list(get_batch_request_status_for_uuid_list(data["uuids"]))
+                ob["result"] = list(mrg_database.get_batch_request_status_for_uuid_list(data["uuids"]))
             return {"type": "requestStatuses", "result": ob}
         elif data["type"] == "getResult":
-            outputs = get_all_outputs_for_run(data["uuid"]);
+            outputs = mrg_database.get_all_outputs_for_run(data["uuid"]);
             output_results = []
             for output in outputs:
                 
@@ -201,7 +203,7 @@ def process_job_request(client_id, job_ob):
             
 
         try:
-            work = get_workflow(workflow["workflowUuid"])
+            work = mrg_database.get_workflow(workflow["workflowUuid"])
         except:
             return {"error": "Workflow not found"}
 
@@ -213,8 +215,8 @@ def process_job_request(client_id, job_ob):
     if len(errors)>0:
         return {"error": errors}
     for workflow in job_ob["workflows"]:
-        workflow["run"] = insert_batch_request(workflow["queue"])
-    update_job_runs(job_ob["uuid"], int(job_ob["runs"]+1))
+        workflow["run"] = mrg_database.insert_batch_request(workflow["queue"])
+    mrg_database.update_job_runs(job_ob["uuid"], int(job_ob["runs"]+1))
     check_batch_requests()
     
     response = {}
@@ -224,7 +226,7 @@ def process_job_request(client_id, job_ob):
     return response
 
 def get_api_actions_def_clean():
-    data = get_apis().dicts()    
+    data = mrg_database.get_apis().dicts()    
     data = [x for x in data if x["enabled"]]
     apis = get_definition_for_api(data)
     clean_api_definitions(apis)
@@ -233,7 +235,7 @@ def get_api_actions_def_clean():
 def get_api_action_def(ident):
     if not ident:
         return {}
-    data = get_apis().dicts()    
+    data = mrg_database.get_apis().dicts()    
     data = [x for x in data if x["enabled"]]
     data = [x for x in data if x["endpoint"]== ident or x["uuid"]== ident]
     if(len(data)!=1):
@@ -280,7 +282,7 @@ def process_api_request(client_id, api_ob, params):
             
 
         try:
-            work = get_workflow(workflow["workflowUuid"])
+            work = mrg_database.get_workflow(workflow["workflowUuid"])
         except:
             return {"error": "Workflow not found"}
 
@@ -292,8 +294,8 @@ def process_api_request(client_id, api_ob, params):
     if len(errors)>0:
         return {"error": errors}
     for workflow in api_ob["workflows"]:
-        workflow["run"] = insert_batch_request(workflow["queue"])
-    update_api_runs(api_ob["uuid"], int(api_ob["runs"]+1))
+        workflow["run"] = mrg_database.insert_batch_request(workflow["queue"])
+    mrg_database.update_api_runs(api_ob["uuid"], int(api_ob["runs"]+1))
     check_batch_requests()
     
     response = {}
@@ -374,7 +376,7 @@ def ws_queue_updated(server, message):
     # print(message) 
     if isinstance(message, str):
         message = json.loads(message)
-    batch_steps = get_all_batch_steps_by_statuses_other_than(["finished", "failed", "invalid"])
+    batch_steps = mrg_database.get_all_batch_steps_by_statuses_other_than(["finished", "failed", "invalid"])
     history = get_prompt_queue_history(server_id)
     queue = get_prompt_queue_queue(server_id)
     currently_running = get_prompt_queue_currently_running(server_id)
@@ -389,7 +391,7 @@ def ws_queue_updated(server, message):
                     step.end_date = datetime.datetime.now()
                     step.status = 'finished'
                     # add outputs to item
-                    update_batch_step(step)
+                    mrg_database.update_batch_step(step)
                     order = 1
                     for node_id in history_item["outputs"].keys():
                          node_output = history_item["outputs"][node_id] 
@@ -397,7 +399,7 @@ def ws_queue_updated(server, message):
                              output = node_output[output_type]
                              for output_item in output:
                                  outp = {}
-                                 batch_request = get_batch_request_by_step_id(step.uuid)
+                                 batch_request = mrg_database.get_batch_request_by_step_id(step.uuid)
                                  if not batch_request:
                                      continue
                                  selection_items = get_selection_items_from_step(batch_request, step)
@@ -408,13 +410,13 @@ def ws_queue_updated(server, message):
                                  outp["node_id"] = node_id
                                  outp["order"] = order
                                  order += 1
-                                 outp = insert_output(outp)
+                                 outp = mrg_database.insert_output(outp)
                                  if selection_items:
                                      for selection_item in selection_items:
                                          outp_sel = {}
                                          outp_sel["output_uuid"] = outp.uuid
                                          outp_sel["selection_item_uuid"] = selection_item.uuid
-                                         insert_output_link(outp_sel)
+                                         mrg_database.insert_output_link(outp_sel)
                                  
                          
                     delete_history_item(server_id, key)
@@ -424,7 +426,7 @@ def ws_queue_updated(server, message):
             if queued[1] == step.uuid:
                 if step.status != 'queued':
                     step.status = 'queued'
-                    update_batch_step(step)
+                    mrg_database.update_batch_step(step)
                 found = True
                 break
         for running in currently_running.values():
@@ -432,18 +434,18 @@ def ws_queue_updated(server, message):
                 if step.status != 'running':
                     step.start_date = datetime.datetime.now()
                     step.status = 'running'
-                    update_batch_step(step)
+                    mrg_database.update_batch_step(step)
                 found = True
                 break
         if not found:
             if step.retry>2:
                     step.status = "failed"
                     step.error = "Too many failed attempts"
-                    update_batch_step(step)
+                    mrg_database.update_batch_step(step)
                     continue
             step.retry += 1
             step.status = "queued"
-            updated_step = update_batch_step(step)
+            updated_step = mrg_database.update_batch_step(step)
             run_step(updated_step)
             break
             
@@ -490,7 +492,7 @@ def get_selection_items_from_step(batch_request, step):
     #get the selection items via value
     for run_sel_item in run_sel_items:
         if "value" in run_sel_item:
-            sel_item = get_selection_item_by_node_field_value(run_sel_item["nodeType"], run_sel_item["fieldType"], run_sel_item["value"])
+            sel_item = mrg_database.get_selection_item_by_node_field_value(run_sel_item["nodeType"], run_sel_item["fieldType"], run_sel_item["value"])
             if sel_item:
                 run_sel_item["uuid"] = sel_item["uuid"]
                 step_sel_items.append(run_sel_item)
@@ -500,24 +502,24 @@ def get_selection_items_from_step(batch_request, step):
 
 def check_batch_requests_finished(batch_request):    
     if batch_request.total == batch_request.current:
-        runs = get_batch_steps_by_statuses_other_than(batch_request.uuid, ["finished","failed","invalid"])
+        runs = mrg_database.get_batch_steps_by_statuses_other_than(batch_request.uuid, ["finished","failed","invalid"])
         if not runs:
             batch_request.status = "finished"
             batch_request.end_time = datetime.datetime.now();
-            update_batch_request(batch_request)
+            mrg_database.update_batch_request(batch_request)
             #server.PromptServer.instance.send("executionFinished", batch_request.uuid, batch_request.client_id)
 
-            send_socket_message("executionFinished",{"batch_request_uuid": batch_request.uuid}, batch_request.client_id)
+            mrg_helpers.send_socket_message("executionFinished",{"batch_request_uuid": batch_request.uuid}, batch_request.client_id)
             return True
     return False
 
 
 def check_batch_requests_finished_uuid(uuid):
-    batch_request = get_batch_request_by_id(uuid)
+    batch_request = mrg_database.get_batch_request_by_id(uuid)
     check_batch_requests_finished(batch_request)
 
 def check_batch_requests():      
-    batch_requests = get_batch_requests_by_statuses(["queued", "running"])
+    batch_requests = mrg_database.get_batch_requests_by_statuses(["queued", "running"])
     queued_something = False
     added = False
     for batch_request in batch_requests:
@@ -526,7 +528,7 @@ def check_batch_requests():
         if added:
             if batch_request.status!="queued":
                 batch_request.status = "queued"
-                update_batch_request(batch_request)
+                mrg_database.update_batch_request(batch_request)
             continue
         step = batch_request.current+1
         # if this happens it basically means we're waiting for some failed steps to retry
@@ -536,7 +538,7 @@ def check_batch_requests():
         added = execute_step_of_batch_request(batch_request, step)
         if batch_request.status!="running":
             batch_request.status = "running"
-            update_batch_request(batch_request)
+            mrg_database.update_batch_request(batch_request)
         queued_something = True
 
 def execute_step_of_batch_request(batch_request, step):
@@ -547,7 +549,7 @@ def execute_step_of_batch_request(batch_request, step):
          extra_data["client_id"] = contents["client_id"]
          enqueue_step(batch_request.uuid, batch_request.order, contents, extra_data, step, 1)
          batch_request.current = step
-         update_batch_request(batch_request)
+         mrg_database.update_batch_request(batch_request)
          return True
     except:
         return False
@@ -561,20 +563,20 @@ def enqueue_step(batch_request_uuid, priority, comfy_content, extra_data, curr_s
     step["server"] = server_id
     step["step"] = curr_step
     step["run_value"] = make_json(comfy_content)
-    inserted_step = insert_batch_step(step)
+    inserted_step = mrg_database.insert_batch_step(step)
     run_step(inserted_step)
     
     return True
 
 def run_step_uuid(step_uuid):
-    step = get_batch_step_by_id(step_uuid)
+    step = mrg_database.get_batch_step_by_id(step_uuid)
     run_step(step)
 
 def run_step(step):
     comfy_content = json.loads(step.run_value)
     extra_data = {}
     extra_data["client_id"] = comfy_content["client_id"]
-    run = get_batch_request_by_id(step.batch_request_uuid)
+    run = mrg_database.get_batch_request_by_id(step.batch_request_uuid)
     priority = run.order
     valid = execution.validate_prompt(comfy_content["prompt"])
     if valid[0]:
@@ -584,14 +586,14 @@ def run_step(step):
         error = {"error": valid[1], "node_errors": valid[3]}
         step["error"] = make_json(error);
         step["status"] = "invalid"
-        update_batch_step(step)
+        mrg_database.update_batch_step(step)
     
     
 
 def enqueue_prompt_by_type(client_id, workflow, api_uuid=None, job_uuid=None, run_mode=None, preset=None, override_values=None, secondary_uuid=None, start_pos=-1):
     # check if we need to return the values after the steps changes or keep the current ones
     if not isinstance(workflow, dict):
-        workflow = model_to_dict(workflow)
+        workflow = mrg_database.model_to_dict(workflow)
         
 
     settings_obj = json.loads(workflow["settings"])
@@ -635,7 +637,7 @@ def enqueue_prompt_by_type(client_id, workflow, api_uuid=None, job_uuid=None, ru
         print("invalid prompt:", root_valid[1])
         return {"error": root_valid[1], "error_type":"comfy_validation", "node_errors": root_valid[3]}
 
-    order = get_batch_requests_max_order()
+    order = mrg_database.get_batch_requests_max_order()
     if not order:
         order = 0
     total_cnt = 1
@@ -802,7 +804,7 @@ def modify_comfy_node(contents, nodes, nodeId, fieldName, step, include_pos):
         comfy_node["pos"][field["fieldName"]] = int(value["p"])
 
 def execute_step_of_batch_request_uuid(uuid, step):
-    batch_request = get_batch_request_by_id(uuid)
+    batch_request = mrg_database.get_batch_request_by_id(uuid)
     return execute_step_of_batch_request(batch_request, step)
 
 
@@ -889,14 +891,14 @@ def calculate_collection(field):
     if field["fieldType"] == "SELECT":
         collection = [{"#": x["count"], "v": x["comfy_name"]} for x in collection]
         if "negateList" in field.keys() and field["negateList"]:
-            main_list = get_selectiondata_by_type(field["fieldName"], field["nodeType"])
+            main_list = mrg_helpers.get_selectiondata_by_type(field["fieldName"], field["nodeType"])
             if main_list:
                 main_list = main_list["data"]
                 collection = [x["v"] for x in collection]
                 collection = list(set(main_list) - set(collection))
                 collection = [{"#": 1, "v": x} for x in collection]
         if len(collection)==0:
-            main_list = get_selectiondata_by_type(field["fieldName"], field["nodeType"])
+            main_list = mrg_helpers.get_selectiondata_by_type(field["fieldName"], field["nodeType"])
             if main_list:
                 main_list = main_list["data"]
                 collection = set(main_list)
@@ -983,7 +985,7 @@ def get_field_by_workflow_node_field(workflow_uuid, node_id, field_name):
     return node["fieldValues"][field_name]
 
 def get_node_by_workflow_node(workflow_uuid, node_id):
-    workflow = get_workflow(workflow_uuid)
+    workflow = mrg_database.get_workflow(workflow_uuid)
     if(workflow.nodes_values):
         contents = json.loads(workflow.nodes_values)
         return [x for x in contents if str(x["id"])==node_id][0]

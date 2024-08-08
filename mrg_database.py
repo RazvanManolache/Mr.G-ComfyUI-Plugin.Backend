@@ -1,8 +1,12 @@
 import datetime
 import logging
+
+
 from re import T
 from peewee import *
-from playhouse.shortcuts import model_to_dict
+
+
+from playhouse.shortcuts import model_to_dict, dict_to_model
 
 
 
@@ -15,7 +19,9 @@ database = SqliteDatabase(dbName, pragmas={
 })
 logger = logging.getLogger('peewee')
 logger.addHandler(logging.StreamHandler())
-logger.setLevel(logging.ERROR)
+logger.setLevel(logging.DEBUG)
+
+
 
 class BaseModel(Model): # js model
     uuid = TextField(primary_key=True)
@@ -92,6 +98,8 @@ def upsert_package_repository(pkg_repo):
         copy_values(pkg_repo, existing_row)
         existing_row.save()
         return model_to_dict(existing_row)
+    
+
 
 def delete_package_repository(uuid):
     if package_repositories.get_by_id(uuid).system == True:
@@ -411,15 +419,39 @@ class batch_requests(NamedObject):
     run_values =  TextField(null=True) #saved
     current_values = TextField(null=True) #need to update
 
-def get_batch_requests_paged(page, per_page, order_column, order_dir, filt):
+def get_batch_requests_paginated(page, per_page, orderby, order_dir, filt):
     #include outputs, workflow name, api name and job name
-    page_results = batch_requests.select().join(batch_steps).join(outputs).join(workflows).join(api).join(jobs).order_by(order_column).paginate(page, per_page)
-    if filt is not None:
+    page_results = (batch_requests.select()
+                    .join(batch_steps, JOIN.LEFT_OUTER, on=batch_steps.batch_request_uuid == batch_requests.uuid)
+                    .join(outputs, JOIN.LEFT_OUTER, on=outputs.batch_step_uuid == batch_steps.uuid)
+                    .join_from(batch_requests, workflows, JOIN.LEFT_OUTER, on=batch_requests.workflow_uuid== workflows.uuid)
+                    .join_from(batch_requests, api, JOIN.LEFT_OUTER, on=batch_requests.api_uuid == api.uuid)
+                    .join_from(batch_requests, jobs, JOIN.LEFT_OUTER, on=batch_requests.job_uuid == jobs.uuid))
+    
+    page_results= page_results.group_by(batch_requests, workflows.name, api.name, jobs.name)
+   
+    if orderby:
+        page_results = page_results.order_by(orderby)
+        
+    page_results = page_results.paginate(page, per_page)
+
+    
+    # # select only the fields we need, everything from outputs and only the name from the other tables
+
+    page_results = page_results.select(batch_requests, 
+                                       fn.COUNT(batch_steps.uuid).alias("steps_count"),
+                                       fn.COUNT(outputs.uuid).alias("outputs_count"),
+                                       workflows.name.alias("workflow_name"), 
+                                       api.name.alias("api_name"),
+                                       jobs.name.alias("job_name"))
+                                  
+
+    if filt:
         page_results = page_results.where(filt)
-    page_results = page_results.dicts().execute()
+    page_results = list(page_results.dicts().execute())
     total = batch_requests.select().count()
-    pages = total // per_page
-    return {"items":page_results, "total":total, "pages":pages}
+    pages = total / per_page
+    return {"data":page_results, "total":total, "pages":pages, "success": True}
     
     
 
@@ -598,8 +630,8 @@ def get_outputs_paginated(page, per_page, orderby, order_dir, filt):
     page_results = page_results.select(outputs, batch_requests.uuid.alias("batch_request_uuid"), 
                                        workflows.uuid.alias("workflow_uuid"), workflows.name.alias("workflow_name"), 
                                        api.uuid.alias("api_uuid"), api.name.alias("api_name"),
-                                       jobs.uuid.alias("job_uuid"), jobs.name.alias("job_name")
-                                  )
+                                       jobs.uuid.alias("job_uuid"), jobs.name.alias("job_name"), batch_requests.tags.alias("tags"))
+                                  
     
     if orderby is not None:
         page_results = page_results.order_by(orderby)

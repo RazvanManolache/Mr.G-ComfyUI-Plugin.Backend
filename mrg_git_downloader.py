@@ -1,7 +1,7 @@
 import os
 import shutil
 import git
-from git import Repo
+
 
 def clone_or_update_repo(repo_url, repo_dir):
     """
@@ -10,7 +10,7 @@ def clone_or_update_repo(repo_url, repo_dir):
     """
     if os.path.exists(repo_dir):
         try:
-            repo = Repo(repo_dir)
+            repo = git.Repo(repo_dir)
             if not repo.bare:
                 print(f"Updating existing repository in {repo_dir}")
                 origin = repo.remotes.origin
@@ -20,11 +20,11 @@ def clone_or_update_repo(repo_url, repo_dir):
                 print(f"Repository directory {repo_dir} is empty.")
         except git.exc.InvalidGitRepositoryError:
             print(f"Directory {repo_dir} is not a valid repository. Cloning afresh.")
-            repo = Repo.clone_from(repo_url, repo_dir)
+            repo = git.Repo.clone_from(repo_url, repo_dir)
             print(f"Repository cloned successfully to {repo_dir}.")
     else:
         print(f"Cloning repository to {repo_dir}")
-        repo = Repo.clone_from(repo_url, repo_dir)
+        repo = git.Repo.clone_from(repo_url, repo_dir)
         print(f"Repository cloned successfully to {repo_dir}.")
     
 def get_current_commit_hash(repo_dir):
@@ -32,7 +32,7 @@ def get_current_commit_hash(repo_dir):
     Get the current commit hash of the repository in the specified directory.
     """
     try:
-        repo = Repo(repo_dir)
+        repo = git.Repo(repo_dir)
         if not repo.bare:
             commit_hash = repo.head.commit.hexsha
             return commit_hash
