@@ -143,6 +143,14 @@ async def outputs_get(request):
     data = mrg_database.get_outputs_paginated(page, limit, orderby, order_dir, filt)
     return mrg_helpers.json_response(data)
 
+# put http://127.0.0.1:8188/mrg/outputs/2f81cc46-fb33-4815-8c48-e83c9130b2e8?_dc=1726219613667
+@server.PromptServer.instance.routes.put('/mrg/outputs/{uuid}')
+async def output_update(request):
+    uuid = request.match_info['uuid']
+    json_data = await request.json()
+    db_data = mrg_database.update_output(uuid, json_data)
+    return mrg_helpers.json_response(db_data)
+
 @server.PromptServer.instance.routes.get('/mrg/batch_requests')
 async def batch_requests_get(request):
     page = 1

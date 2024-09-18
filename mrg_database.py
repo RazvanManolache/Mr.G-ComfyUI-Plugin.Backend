@@ -656,8 +656,12 @@ def get_outputs_by_batch_step_and_output_type(batch_step_uuid, output_type):
 def get_outputs_by_node_run_uuid(node_run_uuid):
     return outputs.select().join(batch_steps).where(batch_steps.batch_request_uuid == node_run_uuid).order_by(outputs.order)
 
-def update_output_rating(uuid, rating):
-    outputs.update(rating=rating).where(outputs.uuid == uuid).execute()
+def update_output(uuid, json_data):
+    
+    rating = json_data.get("rating", None)
+    if rating is not None:    
+        outputs.update(rating=rating).where(outputs.uuid == uuid).execute()
+    
     
 def delete_output(uuid):
     outputs.delete_by_id(uuid)
