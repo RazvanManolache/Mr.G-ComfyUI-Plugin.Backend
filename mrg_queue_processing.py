@@ -410,6 +410,11 @@ def ws_queue_updated(server, message):
                                  outp["node_id"] = node_id
                                  outp["order"] = order
                                  order += 1
+                                 nodes = json.loads(batch_request.nodes_values)
+                                 node_def = nodes[int(node_id)]
+                                 outp["node_name"] = node_def["className"]
+                                 if "alias" in node_def.keys():
+                                     outp["node_name"] = node_def["alias"]
                                  outp = mrg_database.insert_output(outp)
                                  if selection_items:
                                      for selection_item in selection_items:
@@ -543,23 +548,32 @@ def check_batch_requests():
 
 def execute_step_of_batch_request(batch_request, step):
     try: 
-         contents = create_prompt_for_step(batch_request, step, False)
-         #this is to be able to show it also in ui
+         contents, description, description_seq, description_no_seq = create_prompt_for_step(batch_request, step, False)
+         
+         description_seq = make_json(description_seq)
+         description_no_seq = make_json(description_no_seq)
+         
+         if(batch_request.description != description_no_seq):
+             batch_request.description = description_no_seq
+             mrg_database.update_batch_request(batch_request)
          extra_data = {}
          extra_data["client_id"] = contents["client_id"]
-         enqueue_step(batch_request.uuid, batch_request.order, contents, extra_data, step, 1)
+         
+         enqueue_step(batch_request.uuid, batch_request.order, contents, description_seq, extra_data, step, 1)
+         
          batch_request.current = step
          mrg_database.update_batch_request(batch_request)
          return True
     except:
         return False
 
-def enqueue_step(batch_request_uuid, priority, comfy_content, extra_data, curr_step, server_id):
+def enqueue_step(batch_request_uuid, priority,  comfy_content, description, extra_data, curr_step, server_id):
     step = {}
     step_uuid = str(uuid.uuid4())
     step["uuid"] = step_uuid
     step["batch_request_uuid"] = batch_request_uuid
     step["status"] = "queued"
+    step["description"] = description
     step["server"] = server_id
     step["step"] = curr_step
     step["run_value"] = make_json(comfy_content)
@@ -697,7 +711,8 @@ def enqueue_prompt_by_type(client_id, workflow, api_uuid=None, job_uuid=None, ru
     del curr_run_settings["tagsRun"]
     del curr_run_settings["askForNameEachRun"]
 
-    
+    curr_run_settings["modifiedFieldsOutputDescription"] = settings_obj["modifiedFieldsOutputDescription"]
+    curr_run_settings["visibleFieldsOutputDescription"] = settings_obj["visibleFieldsOutputDescription"]
     curr_run_settings["sequenceFields"] = sequence_fields_config
     
     prompt_uuid = workflow["uuid"]
@@ -732,19 +747,17 @@ def enqueue_prompt_by_type(client_id, workflow, api_uuid=None, job_uuid=None, ru
             "start_date": start_date,
             "end_date": end_date,
             "contents": contents_obj,
-             "nodes_values": make_json(nodes),
+            "nodes_values": make_json(nodes),
             "run_values": make_json(root_prompt),
     }
-   
 
 
-
-     
 def create_prompt_for_step(batch_request, step, include_pos):
     contents = json.loads(batch_request.run_values) 
    
     total = batch_request.total
     run_settings = json.loads(batch_request.run_settings)
+    
     run_mode = run_settings["runMode"]
     number_of_runs = run_settings["numberOfRuns"]
     infinite = False
@@ -753,6 +766,8 @@ def create_prompt_for_step(batch_request, step, include_pos):
     do_runs_in_sequence = run_settings["doRunsInSequence"]
     nodes = json.loads(batch_request.nodes_values)
     root_prompt = json.loads(batch_request.run_values)
+    
+    
      
     sequence_fields = run_settings["sequenceFields"]
     sequence_fields.sort(key=lambda x: x["order"],reverse = True)
@@ -779,7 +794,83 @@ def create_prompt_for_step(batch_request, step, include_pos):
                 if transp_step + field["sequencePosition"] >= total:
                     remaining += 1
             modify_comfy_node(contents, nodes, field["nodeId"], field["fieldName"], transp_step, include_pos)
-    return contents
+    
+    modifiedFieldsOutputDescription = "modifiedFieldsOutputDescription" in run_settings.keys() and run_settings["modifiedFieldsOutputDescription"]
+    visibleFieldsOutputDescription = "visibleFieldsOutputDescription" in run_settings.keys() and run_settings["visibleFieldsOutputDescription"]
+    
+    workflow = None
+    workflow_settings = None
+    workflow_nodes = None
+    if batch_request.workflow_uuid:
+        workflow = mrg_database.get_workflow(batch_request.workflow_uuid)
+        if workflow:
+            
+            workflow_nodes = json.loads(workflow.nodes_values)
+
+
+    description = []
+    description_seq = []
+    description_no_seq = []
+    
+    for node in nodes:
+        node_hidden = "nodeHidden" in node.keys() and node["nodeHidden"]
+        node_name = node["className"]
+        if "alias" in node.keys() and node["alias"]:
+            node_name = node["alias"]            
+        node_data = {"id": node["id"], "name": node["className"], "fields":[]}
+        node_data_seq = {"id": node["id"], "name": node["className"], "fields":[]}
+        node_data_noseq = {"id": node["id"], "name": node["className"], "fields":[]}
+        for field_name, field in node["fieldValues"].items():
+            if(field["linkField"]): continue
+            
+            usedInDescription = "usedInDescription" in field.keys() and field["usedInDescription"]
+            if not usedInDescription and modifiedFieldsOutputDescription and workflow_nodes:
+                workflow_field = None
+                for workflow_node in workflow_nodes:
+                    if workflow_node["id"] == node["id"]:
+                        if field_name in workflow_node["fieldValues"].keys():
+                            workflow_field = workflow_node["fieldValues"][field_name]
+                            break
+                if workflow_field:
+                    workflow_field_value = workflow_field["value"]
+                if workflow_field_value != field["value"]:
+                    usedInDescription = True
+                    
+            
+                    
+            hidden = "hidden" in field.keys() and field["hidden"]
+            if not usedInDescription and visibleFieldsOutputDescription and not hidden and not node_hidden:
+                usedInDescription = True
+                
+            if usedInDescription:
+                label_field = field_name
+                alias = None
+                if "alias" in field.keys():
+                    alias = field["alias"]
+                if alias:
+                    label_field = alias
+                item_to_add = {"name": label_field,"value":field["value"]} 
+                # if field is in sequence_fields (name and node id), add to sequence description
+                found = False
+                for sequence_field in sequence_fields:
+                    if sequence_field["fieldName"] == field_name and sequence_field["nodeId"] == node["id"]:
+                        item_to_add["seq"] = True                        
+                        found = True
+                        break
+                node_data["fields"].append(item_to_add)
+                if found:
+                    node_data_seq["fields"].append(item_to_add)
+                else:
+                    node_data_noseq["fields"].append(item_to_add)
+        if len(node_data["fields"])>0:
+            description.append(node_data)
+        if len(node_data_seq["fields"])>0:
+            description_seq.append(node_data_seq)
+        if len(node_data_noseq["fields"])>0:
+            description_no_seq.append(node_data_noseq)
+                
+        
+    return contents, description, description_seq, description_no_seq
 
 def get_values_and_pos_from_prompt(prompt):
     nodes = {}
@@ -815,7 +906,6 @@ def execute_step_of_batch_request_uuid(uuid, step):
             
 def cleanup_node(node):
     del node["xclass"]
-    del node["nodeHidden"]
     del node["selectedNode"]
     del node["order"]
     for key, value in node["fieldValues"].items():
@@ -823,8 +913,7 @@ def cleanup_node(node):
 
 def cleanup_field(field):
     del field["label"]
-    del field["fieldSelected"]
-    del field["hidden"]            
+    del field["fieldSelected"]    
     if "node" in field.keys():
         del field["node"]
         keys = set(field.keys())

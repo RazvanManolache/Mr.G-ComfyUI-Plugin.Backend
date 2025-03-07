@@ -121,6 +121,13 @@ async def output_get(request):
     data = mrg_database.model_to_dict(data)
     return mrg_helpers.json_response(data)
 
+@server.PromptServer.instance.routes.post('/mrg/output_download')
+async def output_download(request):
+    data = await request.json()
+    output = mrg_database.get_output(data['uuid'])
+    #TODO: work on download
+    return web.FileResponse(output['path'])
+
 #example request
 #http://127.0.0.1:8188/mrg/outputs?_dc=1722268183209&page=1&start=0&limit=25
 @server.PromptServer.instance.routes.get('/mrg/outputs')

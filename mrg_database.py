@@ -1,6 +1,7 @@
 import datetime
 import logging
-
+import json
+from urllib.parse import unquote
 
 from re import T
 from peewee import *
@@ -21,8 +22,18 @@ logger = logging.getLogger('peewee')
 logger.addHandler(logging.StreamHandler())
 logger.setLevel(logging.DEBUG)
 
+def apply_filters(query, filters):
+    decoded_string = unquote(filters)
+    filters = json.loads(decoded_string)
+   
+    for f in filters:
+        field_name = f["property"]
+        value = f["value"]
+        operator = f.get("operator", "=")
+        sql_expr = f"{field_name} {operator} ?"
+        query = query.where(SQL(sql_expr, value))
 
-
+    return query
 class BaseModel(Model): # js model
     uuid = TextField(primary_key=True)
     class Meta:
@@ -69,6 +80,7 @@ class NamedObject(BaseModel): # js model
     create_date = DateTimeField(null=False)
     update_date = DateTimeField(null=False)
     tags = TextField(null=True)
+    comments = TextField(null=True)
 
 class package_repositories(NamedObject): # js model
     url = TextField()
@@ -525,7 +537,8 @@ class batch_steps(BaseModel):
     step = IntegerField(null=False)
     server = IntegerField(null=False)
     retry = IntegerField(null=False, default=0)
-    error =  TextField(null=True)
+    description = TextField(null=True)
+    error = TextField(null=True)
     create_date = DateTimeField(null=False) 
     start_date = DateTimeField(null=True) 
     update_date = DateTimeField(null=False)
@@ -600,7 +613,10 @@ class outputs(BaseModel):
     batch_step_uuid = ForeignKeyField(batch_steps, null=True,on_delete='SET NULL', backref='batch_step')
     value = TextField(null=False)
     order = IntegerField(null=False)
+    #node that produced this output
     node_id = IntegerField(null=False)
+    #name of node that produced this output 
+    node_name = TextField(null=False)
     output_type = TextField(null=False)
     create_date = DateTimeField(null=False)
     update_date = DateTimeField(null=False)
@@ -615,7 +631,7 @@ def get_output(uuid):
 
 
 def get_outputs_paginated(page, per_page, orderby, order_dir, filt):
-    page_results = outputs.select().paginate(page, per_page)
+    page_results = outputs.select()
     #include step info
     page_results = (page_results.join(batch_steps, on=outputs.batch_step_uuid == batch_steps.uuid)
                                 .join(batch_requests, on= batch_steps.batch_request_uuid == batch_requests.uuid)
@@ -627,17 +643,25 @@ def get_outputs_paginated(page, per_page, orderby, order_dir, filt):
     
     # select only the fields we need, everything from outputs and only the name from the other tables
 
-    page_results = page_results.select(outputs, batch_requests.uuid.alias("batch_request_uuid"), 
-                                       workflows.uuid.alias("workflow_uuid"), workflows.name.alias("workflow_name"), 
+    page_results = page_results.select(outputs, 
+                                       batch_requests.description.alias("request_description"), batch_steps.description.alias("step_description"),   
+                                       batch_requests.uuid.alias("batch_request_uuid"), workflows.uuid.alias("workflow_uuid"), 
+                                       workflows.name.alias("workflow_name"), 
                                        api.uuid.alias("api_uuid"), api.name.alias("api_name"),
                                        jobs.uuid.alias("job_uuid"), jobs.name.alias("job_name"), batch_requests.tags.alias("tags"))
                                   
     
     if orderby is not None:
         page_results = page_results.order_by(orderby)
+
+    if filt is not None:
+        page_results = apply_filters(page_results, filt)
+    total = page_results.select().count()
+    page_results = page_results.paginate(page, per_page)
     
     page_results = list(page_results.dicts().execute())
-    total = outputs.select().count()
+    
+   
     pages = total // per_page
     return {"data":page_results, "total":total, "pages":pages, "success": True}
 

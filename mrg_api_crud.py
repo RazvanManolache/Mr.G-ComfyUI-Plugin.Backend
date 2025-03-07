@@ -19,6 +19,7 @@ async def package_repositories_get(request):
 @server.PromptServer.instance.routes.put('/mrg/package_repositories')
 @server.PromptServer.instance.routes.post('/mrg/package_repositories')
 async def package_repositories_update(request):
+    #TODO: update available packages from repository
     json_data = await request.json()    
     mrg_database.upsert_package_repository(json_data)
     return mrg_helpers.json_response({})

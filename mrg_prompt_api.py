@@ -71,11 +71,12 @@ async def mrg_prompt(request):
     
     batch_request = mrg_database.insert_batch_request(result)
     mrg_queue_processing.check_batch_requests()
-    new_prompt = mrg_queue_processing.create_prompt_for_step(batch_request, result["total"]+1, True)
+    new_prompt, description, description_seq, description_no_seq = mrg_queue_processing.create_prompt_for_step(batch_request, result["total"]+1, True)
     response = {}
     response["success"] = "OK"
     response["batch_request_uuid"] = str(result["uuid"])
     response["prompt"] = new_prompt
+    response["description"] = description
     response["changes"] = mrg_queue_processing.get_values_and_pos_from_prompt(new_prompt)    
     return mrg_helpers.json_response(response)
 
