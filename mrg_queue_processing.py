@@ -1201,3 +1201,33 @@ def create_new_sequence_field(sequence_fields_config, nodes):
         field["transparentSequence"] = True
         sequence_fields.append(field)
     return sequence_fields
+
+def make_workflow(output, step, run, workflow):
+    
+    
+    workflow.id = None
+    workflow.create_date = None
+    workflow.update_date = None
+    workflow.times_used = 0
+    workflow.system = False
+    workflow.order = 0
+    workflow.hidden = False
+    workflow.favourite = False
+    if run.name:
+        workflow.name = run.name
+    if run.contents:
+        workflow.contents = run.contents
+    #workflow.settings = 
+    if run.tags:
+        workflow.tags += ','+run.tags
+    
+    #TODO: composite workflow from step, run and workflow
+    #workflow.contents
+    #workflow.comments
+    #workflow.description = ""
+    #workflow.name
+    #workflow.nodes_values
+    #workflow.run_values=
+    
+    #workflow.tags = 
+    return workflow

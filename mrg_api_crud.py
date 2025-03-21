@@ -123,9 +123,30 @@ async def output_links_by_selection_item(request):
 async def workflow_get(request):
     if "uuid" in request.rel_url.query:
         uuid = request.rel_url.query["uuid"]
-    data = mrg_database.get_workflow(uuid)
-    data = mrg_database.model_to_dict(data)
-    return mrg_helpers.json_response(data)
+    
+    #if the uuid starts with "output " then we need to do something else
+    if uuid.startswith("output "):
+        output_uuid = uuid.split(" ")[1]
+        output = mrg_database.get_output(output_uuid)
+        if output is None:
+            return web.Response(status=404)
+        step = mrg_database.get_batch_step(output.batch_step_uuid_id)
+        if step is None:
+            return web.Response(status=404)
+        run = mrg_database.get_batch_request(step.batch_request_uuid_id)
+        if run is None:
+            return web.Response(status=404)
+        workflow = mrg_database.get_workflow(run.workflow_uuid_id)
+        if workflow is None:
+            workflow = mrg_database.new_workflow()
+       
+        result = mrg_queue_processing.make_workflow(output, step, run, workflow)
+        result = mrg_database.model_to_dict(result)
+        return mrg_helpers.json_response(result)
+    else:
+        data = mrg_database.get_workflow(uuid)
+        data = mrg_database.model_to_dict(data)
+        return mrg_helpers.json_response(result)
 
 @server.PromptServer.instance.routes.get('/mrg/workflows')
 async def workflows_get(request):

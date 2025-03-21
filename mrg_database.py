@@ -31,7 +31,7 @@ def apply_filters(query, filters):
         value = f["value"]
         operator = f.get("operator", "=")
         sql_expr = f"{field_name} {operator} ?"
-        query = query.where(SQL(sql_expr, value))
+        query = query.where(SQL(sql_expr, [value]))
 
     return query
 class BaseModel(Model): # js model
@@ -297,6 +297,9 @@ class workflows(NamedPackageObject): #js model
     settings = TextField(null=True)
     run_values =  TextField(null=True)
 
+
+def new_workflow():
+    return workflows()
     
 
 def get_workflows_short():
@@ -306,7 +309,7 @@ def get_workflows_full():
     return workflows.select()
 
 def get_workflow(uuid):
-    return workflows.select().where(workflows.uuid == uuid).execute()[0]
+    return workflows.get_by_id(uuid)
 
 def delete_workflow(uuid):
     workflows.delete_by_id(uuid)
@@ -508,7 +511,7 @@ def get_batch_requests():
 
 
 def get_batch_request(uuid):
-    return batch_requests.select().where(batch_requests.uuid == uuid).execute()
+    return batch_requests.get_by_id(uuid)
 
 def delete_batch_request(uuid):
     batch_requests.delete_by_id(uuid)
@@ -590,7 +593,7 @@ def get_batch_steps_full():
     return batch_steps.select()
 
 def get_batch_step(uuid):
-    return batch_steps.select().where(batch_steps.uuid == uuid).execute()[0]
+    return batch_steps.get_by_id(uuid)
 
 def delete_batch_step(uuid):
     batch_steps.delete_by_id(uuid)
@@ -631,10 +634,10 @@ def get_output(uuid):
 
 
 def get_outputs_paginated(page, per_page, orderby, order_dir, filt):
-    page_results = outputs.select()
+    page_search = outputs.select()
     #include step info
-    page_results = (page_results.join(batch_steps, on=outputs.batch_step_uuid == batch_steps.uuid)
-                                .join(batch_requests, on= batch_steps.batch_request_uuid == batch_requests.uuid)
+    page_search = (page_search.join(batch_steps, JOIN.LEFT_OUTER, on=outputs.batch_step_uuid == batch_steps.uuid)
+                                .join(batch_requests, JOIN.LEFT_OUTER, on= batch_steps.batch_request_uuid == batch_requests.uuid)
                                 .join_from(batch_requests, workflows, JOIN.LEFT_OUTER, on=batch_requests.workflow_uuid== workflows.uuid)
                                 .join_from(batch_requests, api, JOIN.LEFT_OUTER, on=batch_requests.api_uuid == api.uuid)
                                 .join_from(batch_requests, jobs, JOIN.LEFT_OUTER, on=batch_requests.job_uuid == jobs.uuid))
@@ -643,27 +646,29 @@ def get_outputs_paginated(page, per_page, orderby, order_dir, filt):
     
     # select only the fields we need, everything from outputs and only the name from the other tables
 
-    page_results = page_results.select(outputs, 
+    page_search = page_search.select(outputs, 
                                        batch_requests.description.alias("request_description"), batch_steps.description.alias("step_description"),   
                                        batch_requests.uuid.alias("batch_request_uuid"), workflows.uuid.alias("workflow_uuid"), 
                                        workflows.name.alias("workflow_name"), 
                                        api.uuid.alias("api_uuid"), api.name.alias("api_name"),
                                        jobs.uuid.alias("job_uuid"), jobs.name.alias("job_name"), batch_requests.tags.alias("tags"))
                                   
-    
-    if orderby is not None:
-        page_results = page_results.order_by(orderby)
+    page_search = page_search.order_by(outputs.create_date.desc())
+    #if orderby is not None:
+    #    page_search = page_search.order_by(orderby)
 
-    if filt is not None:
-        page_results = apply_filters(page_results, filt)
-    total = page_results.select().count()
-    page_results = page_results.paginate(page, per_page)
+    if filt:
+        page_search = apply_filters(page_search, filt)
+    page_count = page_search.alias("page_count")
     
-    page_results = list(page_results.dicts().execute())
+    page_search = page_search.paginate(page, per_page)
     
+    page_result = list(page_search.dicts().execute())
+    
+    total = outputs.alias('outputs').select().join(page_count, on=SQL('outputs.uuid = page_count.uuid')).count()
    
     pages = total // per_page
-    return {"data":page_results, "total":total, "pages":pages, "success": True}
+    return {"data":page_result, "total":total, "pages":pages, "success": True}
 
 def get_outputs_by_batch_step(batch_step_uuid):
     return outputs.select().where(outputs.batch_step_uuid == batch_step_uuid).order_by(outputs.order)
