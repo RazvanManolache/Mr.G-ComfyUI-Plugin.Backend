@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           repository: RazvanManolache/Mr.G-ComfyUI-Plugin.Web
-          ref: 8e96479abc61664f69fdbdf4ef6ac1dab20481c7
+          ref: de0248d9635bc5d583321cacf8f6f67ea24637a5
           path: .frontend/mrg
           persist-credentials: false
       - name: Install CPU test dependencies

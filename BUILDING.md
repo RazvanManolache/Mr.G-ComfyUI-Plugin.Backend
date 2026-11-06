@@ -2,7 +2,8 @@
 
 Open **Actions > Plugin package and ComfyUI checks > Run workflow**. Download the
 successful run's **ComfyUI-Backend-plugin** artifact and extract the ZIP inside it
-into `ComfyUI/custom_nodes`. Install `requirements.txt` with ComfyUI's Python.
+into `ComfyUI/custom_nodes`, creating `ComfyUI/custom_nodes/MrG`. Keep that folder
+name: periods in the repository name break relative imports in the legacy loader. Install `requirements.txt` with ComfyUI's Python.
 Install the separate Mr.G Web plugin into your active web root's `mrg` directory.
 Start ComfyUI, then open `http://127.0.0.1:8188/mrg/default.htm`.
 
