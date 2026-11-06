@@ -12,13 +12,8 @@ import math
 import os
 import folder_paths
 
-import pylab as pl
 
-from doctest import debug
 from fileinput import filename
-from tokenize import String
-from asyncio.windows_events import NULL
-from calendar import c
 from aiohttp import web
 from execution import *
 
@@ -28,7 +23,7 @@ from . import mrg_helpers
 
 from types import SimpleNamespace
 
-server_address = "127.0.0.1:8188"
+server_address = os.environ.get("MRG_COMFY_ADDRESS", "127.0.0.1:8188")
 mrg_client_id = str(uuid.uuid4())
 
 def get_obj_dict(obj):

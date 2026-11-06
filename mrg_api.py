@@ -1,8 +1,7 @@
-from requests.sessions import merge_hooks
 import server
 import json
+from pathlib import Path
 
-from tokenize import String
 from aiohttp import web
 
 from . import mrg_database
@@ -17,7 +16,7 @@ from . import mrg_packages
 
 @server.PromptServer.instance.routes.get('/mrg/bundle')
 async def picker_texts_update(request):
-    mrg_bundle.bundle_javascript_files("/ComfyUI/web/mrg/app/", "bundle.js")
+    mrg_bundle.bundle_javascript_files(Path(server.PromptServer.instance.web_root) / "mrg" / "app", "bundle.js")
     return web.HTTPTemporaryRedirect('app/bundle.js')
 
 @server.PromptServer.instance.routes.get('/mrg/categories_tree')

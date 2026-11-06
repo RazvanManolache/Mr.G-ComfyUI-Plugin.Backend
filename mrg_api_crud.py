@@ -1,7 +1,6 @@
 import server
 import json
 
-from tokenize import String
 from aiohttp import web
 
 from . import mrg_database

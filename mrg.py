@@ -49,7 +49,7 @@ ws = websocket.WebSocket()
 def connect_to_server():
     while True:
         try:
-            if ws.getstatus() != websocket.STATUS_NORMAL:
+            if not ws.connected:
                 ws.connect("ws://" + mrg_queue_processing.server_address + "/ws")
                 print("Connected to server")
                 stalk_comfy(ws)
@@ -57,4 +57,4 @@ def connect_to_server():
             print("Could not connect to server")
         time.sleep(1)
 
-threading.Thread(target=connect_to_server).start()
+threading.Thread(target=connect_to_server, daemon=True, name="mrg-comfy-websocket").start()

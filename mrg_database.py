@@ -1,9 +1,10 @@
 import datetime
+import os
+from pathlib import Path
 import logging
 import json
 from urllib.parse import unquote
 
-from re import T
 from peewee import *
 
 
@@ -11,7 +12,9 @@ from playhouse.shortcuts import model_to_dict, dict_to_model
 
 
 
-dbName = ".\db\mrg.db"
+db_path = Path(os.environ.get("MRG_DATABASE", str(Path.cwd() / "db" / "mrg.db")))
+db_path.parent.mkdir(parents=True, exist_ok=True)
+dbName = str(db_path)
 
 database = SqliteDatabase(dbName, pragmas={
     'journal_mode': 'wal',

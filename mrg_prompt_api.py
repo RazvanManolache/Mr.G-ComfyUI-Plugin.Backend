@@ -10,11 +10,6 @@ import random
 
 from types import SimpleNamespace
 from app.user_manager import UserManager
-import pylab as pl
-from re import L
-from tokenize import String
-from doctest import debug
-from pickle import NONE
 from execution import *
 
 

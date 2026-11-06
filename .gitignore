@@ -1,1 +1,15 @@
 *.pyc
+/dist/
+/__pycache__/
+*.pyc
+*.bec
+
+/dist/
+/__pycache__/
+*.pyc
+*.bec
+
+/.comfy/
+/.frontend/
+/comfy-smoke.log
+/db/
