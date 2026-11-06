@@ -22,18 +22,19 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - name: Check out matching ComfyUI fork
-        uses: actions/checkout@v7.0.1
-        with:
-          repository: RazvanManolache/Mr.G-ComfyUI
-          ref: 96f117e9abf9830d3efdc32604581ff67b205858
-          path: .comfy
-          persist-credentials: false
+      - name: Fetch pinned legacy ComfyUI source
+        # This historical tree contains an unrelated orphan temp_repo gitlink.
+        # Plain Git checks out the source without checkout-action submodule cleanup.
+        run: |
+          git init -b ci .comfy
+          git -C .comfy remote add origin https://github.com/RazvanManolache/Mr.G-ComfyUI.git
+          git -C .comfy fetch --depth 1 origin 96f117e9abf9830d3efdc32604581ff67b205858
+          git -C .comfy checkout --detach FETCH_HEAD
       - name: Check out web plugin
         uses: actions/checkout@v7.0.1
         with:
           repository: RazvanManolache/Mr.G-ComfyUI-Plugin.Web
-          ref: 8e96479
+          ref: 8e96479abc61664f69fdbdf4ef6ac1dab20481c7
           path: .frontend/mrg
           persist-credentials: false
       - name: Install CPU test dependencies
