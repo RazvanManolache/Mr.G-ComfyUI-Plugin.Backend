@@ -7,7 +7,7 @@ TRACKED=subprocess.check_output(['git','ls-files','-z'],cwd=ROOT).decode().split
 FILES=[]
 for name in sorted(filter(None,TRACKED)):
     p=Path(name)
-    if p.parts[0] in {'.github','tools','tests','junk'} or p.name.startswith('.'):continue
+    if p.parts[0] in {'.github','tools','tests','junk','package_repositories'} or p.name.startswith('.'):continue
     if p.suffix in {'.pyc','.db','.bec'}:continue
     FILES.append(name)
 assert FILES, 'No runtime files selected'
